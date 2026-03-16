@@ -1,0 +1,520 @@
+name: Pipeline Orchestrator
+on:
+  # Trigger when docs are merged to main
+  push:
+    branches: [main]
+    paths:
+      - 'docs/01-raw-inputs/**'
+      - 'docs/02-discovery/**'
+      - 'docs/03-architecture/**'
+      - 'docs/04-specs/**'
+
+  # Manual trigger for execution mode (process build plan tasks)
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: 'Specific task ID to execute (e.g., WS0-BB1-T1). Leave empty to auto-select next available.'
+        required: false
+      mode_override:
+        description: 'Override pipeline mode (discovery/execution/steady-state)'
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: pipeline-orchestrate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  determine-mode:
+    name: Determine Pipeline Mode
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.mode.outputs.mode }}
+      next_stage: ${{ steps.stage.outputs.next_stage }}
+      task_id: ${{ steps.stage.outputs.task_id }}
+      signals: ${{ steps.stage.outputs.signals }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Read pipeline mode
+        id: mode
+        run: |
+          OVERRIDE="${{ github.event.inputs.mode_override }}"
+          if [ -n "$OVERRIDE" ]; then
+            if echo "$OVERRIDE" | grep -qE '^(discovery|execution|steady-state)$'; then
+              echo "mode=$OVERRIDE" >> "$GITHUB_OUTPUT"
+            else
+              echo "::error::Invalid mode_override: $OVERRIDE. Must be discovery, execution, or steady-state."
+              exit 1
+            fi
+          elif [ -f pipeline.yaml ]; then
+            MODE=$(grep '^mode:' pipeline.yaml | awk '{print $2}' | tr -d '"')
+            echo "mode=${MODE:-steady-state}" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=steady-state" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine next pipeline stage
+        id: stage
+        env:
+          PIPELINE_MODE: ${{ steps.mode.outputs.mode }}
+          TASK_ID_INPUT: ${{ github.event.inputs.task_id }}
+        run: |
+          if [ "$PIPELINE_MODE" = "execution" ]; then
+            if [ -n "$TASK_ID_INPUT" ]; then
+              echo "task_id=${TASK_ID_INPUT}" >> "$GITHUB_OUTPUT"
+              echo "next_stage=execute-task" >> "$GITHUB_OUTPUT"
+            else
+              chmod +x scripts/read-build-plan.sh
+              NEXT_TASK=$(./scripts/read-build-plan.sh next)
+              if [ "$NEXT_TASK" = "NO_TASKS" ] || [ "$NEXT_TASK" = "ALL_BLOCKED" ]; then
+                echo "::warning::No available tasks: ${NEXT_TASK}"
+                echo "next_stage=none" >> "$GITHUB_OUTPUT"
+                echo "task_id=" >> "$GITHUB_OUTPUT"
+              else
+                echo "task_id=${NEXT_TASK}" >> "$GITHUB_OUTPUT"
+                echo "next_stage=execute-task" >> "$GITHUB_OUTPUT"
+              fi
+            fi
+            echo "signals=" >> "$GITHUB_OUTPUT"
+
+          elif [ "$PIPELINE_MODE" = "discovery" ]; then
+            echo "next_stage=discovery-synthesis" >> "$GITHUB_OUTPUT"
+            echo "task_id=" >> "$GITHUB_OUTPUT"
+            echo "signals=" >> "$GITHUB_OUTPUT"
+
+          else
+            # Steady-state: determine which stage based on what was just merged
+            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+
+            if echo "$CHANGED_FILES" | grep -q "docs/01-raw-inputs/"; then
+              echo "next_stage=discovery" >> "$GITHUB_OUTPUT"
+              SIGNALS=$(echo "$CHANGED_FILES" | grep "docs/01-raw-inputs/" | head -5)
+            elif echo "$CHANGED_FILES" | grep -q "docs/02-discovery/"; then
+              echo "next_stage=architecture" >> "$GITHUB_OUTPUT"
+              SIGNALS=$(echo "$CHANGED_FILES" | grep "docs/02-discovery/" | head -5)
+            elif echo "$CHANGED_FILES" | grep -q "docs/03-architecture/"; then
+              echo "next_stage=specification" >> "$GITHUB_OUTPUT"
+              SIGNALS=$(echo "$CHANGED_FILES" | grep "docs/03-architecture/" | head -5)
+            elif echo "$CHANGED_FILES" | grep -q "docs/04-specs/"; then
+              echo "next_stage=code" >> "$GITHUB_OUTPUT"
+              SIGNALS=$(echo "$CHANGED_FILES" | grep "docs/04-specs/" | head -5)
+            else
+              echo "next_stage=none" >> "$GITHUB_OUTPUT"
+              SIGNALS=""
+            fi
+
+            echo "signals<<EOF" >> "$GITHUB_OUTPUT"
+            echo "$SIGNALS" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+            echo "task_id=" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ─── Steady-State: Discovery Phase ──────────────────────
+  run-discovery:
+    name: "Discovery: Raw Input → PRB"
+    needs: determine-mode
+    if: needs.determine-mode.outputs.next_stage == 'discovery'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dispatch agent work — write discovery document
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNALS: ${{ needs.determine-mode.outputs.signals }}
+        run: |
+          ISSUE_URL=$(gh issue create \
+            --title "pipeline: Discovery phase — process new signals" \
+            --body "## Pipeline Agent Task: Discovery Phase
+
+          **Mode:** steady-state / discovery
+          **Stage:** Raw Input → PRB (Problem Report Brief)
+
+          ### Signals to Process
+          ${SIGNALS}
+
+          ### Instructions
+          1. Read \`.agent-rules.md\`, \`stack.yaml\`, and \`pipeline.yaml\`
+          2. Read \`docs/00-foundation/PROJECT.md\` and \`docs/00-foundation/PERSONAS.md\` for project context and persona definitions
+          3. Read each new signal document listed above
+          4. For each signal, create a Discovery document (PRB) using \`.templates/discovery_template.md\`
+          5. Save to \`docs/02-discovery/PRB-{signal-number}.md\`
+          6. Reference personas from PERSONAS.md in the Affected Users section
+          7. Ensure the PRB links back to the raw input (cross-linking rule)
+          8. Open a PR with label \`pipeline:proposal\` for approval
+          9. Suggested branch name: \`discovery/{signal-number}\` (convention only — pipeline uses labels, not branch names)
+
+          ### Constraints
+          - ONE artifact type per PR (discovery documents only)
+          - Every PRB must link to its source signal
+          - Do not proceed to architecture — STOP after opening the PR" \
+            --label "pipeline:agent-task")
+          echo "issue_url=${ISSUE_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Update project board
+        if: success()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_URL="${{ steps.dispatch.outputs.issue_url }}"
+          if [ -n "$ISSUE_URL" ]; then
+            chmod +x scripts/update-project-board.sh
+            ./scripts/update-project-board.sh "$ISSUE_URL" "Discovery" || true
+          fi
+
+  # ─── Steady-State: Architecture Phase ──────────────────────
+  run-architecture:
+    name: "Architecture: PRB → ADR"
+    needs: determine-mode
+    if: needs.determine-mode.outputs.next_stage == 'architecture'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dispatch agent work — write architecture document
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRBS: ${{ needs.determine-mode.outputs.signals }}
+        run: |
+          ISSUE_URL=$(gh issue create \
+            --title "pipeline: Architecture phase — design solution" \
+            --body "## Pipeline Agent Task: Architecture Phase
+
+          **Mode:** steady-state / architecture
+          **Stage:** PRB → ADR (Architecture Decision Record)
+
+          ### Approved PRBs to Process
+          ${PRBS}
+
+          ### Instructions
+          1. Read \`.agent-rules.md\`, \`stack.yaml\`, and \`pipeline.yaml\`
+          2. Read \`docs/00-foundation/CONSTRAINTS.md\` for compliance, performance, and security requirements
+          3. Read each PRB listed above
+          4. Create an Architecture Decision Record (ADR) using \`.templates/adr_template.md\`
+          5. Save to \`docs/03-architecture/ADR-{issue-number}.md\`
+          6. Ensure the ADR links back to the PRB (cross-linking rule)
+          7. Read \`stack.yaml\` for technology constraints
+          8. Ensure architecture respects constraints from CONSTRAINTS.md (performance budgets, compliance, security)
+          9. Open a PR with label \`pipeline:proposal\` for approval
+          10. Suggested branch name: \`architecture/{issue-number}\` (convention only — pipeline uses labels, not branch names)
+
+          ### Constraints
+          - ONE artifact type per PR (architecture documents only)
+          - Every ADR must link to its source PRB
+          - Do not proceed to specification — STOP after opening the PR" \
+            --label "pipeline:agent-task")
+          echo "issue_url=${ISSUE_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Update project board
+        if: success()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_URL="${{ steps.dispatch.outputs.issue_url }}"
+          if [ -n "$ISSUE_URL" ]; then
+            chmod +x scripts/update-project-board.sh
+            ./scripts/update-project-board.sh "$ISSUE_URL" "Architecture" || true
+          fi
+
+  # ─── Steady-State: Specification Phase ──────────────────────
+  run-specification:
+    name: "Specification: ADR → PRD"
+    needs: determine-mode
+    if: needs.determine-mode.outputs.next_stage == 'specification'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dispatch agent work — write specification
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ADRS: ${{ needs.determine-mode.outputs.signals }}
+        run: |
+          ISSUE_URL=$(gh issue create \
+            --title "pipeline: Specification phase — write PRD" \
+            --body "## Pipeline Agent Task: Specification Phase
+
+          **Mode:** steady-state / specification
+          **Stage:** ADR → PRD (Product Requirements Document)
+
+          ### Approved ADRs to Process
+          ${ADRS}
+
+          ### Instructions
+          1. Read \`.agent-rules.md\`, \`stack.yaml\`, and \`pipeline.yaml\`
+          2. Read \`docs/00-foundation/BRAND.md\` for UX and design principles when spec involves user-facing features
+          3. Read each ADR listed above
+          4. Create a Specification (PRD) using \`.templates/prd_template.md\`
+          5. Save to \`docs/04-specs/PRD-{issue-number}.md\`
+          6. Ensure the PRD links back to the ADR (cross-linking rule)
+          7. Include testable boolean acceptance criteria
+          8. List exact test file paths and source files in 'Files to Create/Modify'
+          9. Open a PR with label \`pipeline:proposal\` for approval
+          10. Suggested branch name: \`spec/{issue-number}\` (convention only — pipeline uses labels, not branch names)
+
+          ### Constraints
+          - ONE artifact type per PR (specification documents only)
+          - Every PRD must link to its source ADR
+          - Do not proceed to code — STOP after opening the PR" \
+            --label "pipeline:agent-task")
+          echo "issue_url=${ISSUE_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Update project board
+        if: success()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_URL="${{ steps.dispatch.outputs.issue_url }}"
+          if [ -n "$ISSUE_URL" ]; then
+            chmod +x scripts/update-project-board.sh
+            ./scripts/update-project-board.sh "$ISSUE_URL" "Specification" || true
+          fi
+
+  # ─── Steady-State: Code Phase ──────────────────────
+  run-code:
+    name: "Code: PRD → Implementation"
+    needs: determine-mode
+    if: needs.determine-mode.outputs.next_stage == 'code'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dispatch agent work — write code
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRDS: ${{ needs.determine-mode.outputs.signals }}
+        run: |
+          ISSUE_URL=$(gh issue create \
+            --title "pipeline: Code phase — implement specifications" \
+            --body "## Pipeline Agent Task: Code Phase
+
+          **Mode:** steady-state / code
+          **Stage:** PRD → Implementation
+
+          ### Specifications to Implement
+          ${PRDS}
+
+          ### Instructions
+          1. Read \`.agent-rules.md\`, \`stack.yaml\`, and \`pipeline.yaml\`
+          2. Read each PRD listed above
+          3. Write implementation code in \`src/\` matching the PRD
+          4. Write tests in \`tests/\` covering all acceptance criteria
+          5. Add \`# Implements: PRD-{n}\` comments in new source files
+          6. Open a PR for review
+          7. Suggested branch name: \`code/{issue-number}\` (convention only — pipeline uses labels, not branch names)
+
+          ### Constraints
+          - Satisfy every acceptance criterion in the PRD
+          - All existing tests must continue to pass
+          - CI will run validate-and-test.yml on your PR
+          - If tests fail, fix them before requesting review" \
+            --label "pipeline:agent-task")
+          echo "issue_url=${ISSUE_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Update project board
+        if: success()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_URL="${{ steps.dispatch.outputs.issue_url }}"
+          if [ -n "$ISSUE_URL" ]; then
+            chmod +x scripts/update-project-board.sh
+            ./scripts/update-project-board.sh "$ISSUE_URL" "Code" || true
+          fi
+
+  # ─── Execution Mode: Process Build Plan Task ──────────────────────
+  execute-build-plan-task:
+    name: "Execute Build Plan Task"
+    needs: determine-mode
+    if: needs.determine-mode.outputs.next_stage == 'execute-task'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read task specification
+        id: task
+        env:
+          TASK_ID: ${{ needs.determine-mode.outputs.task_id }}
+        run: |
+          chmod +x scripts/read-build-plan.sh
+          TASK_FILE=$(./scripts/read-build-plan.sh find "$TASK_ID")
+          if [ -z "$TASK_FILE" ]; then
+            echo "::error::Task ${TASK_ID} not found in build plan"
+            exit 1
+          fi
+          echo "task_file=${TASK_FILE}" >> "$GITHUB_OUTPUT"
+
+          if grep -q "^human_gate: true" "$TASK_FILE"; then
+            echo "human_gate=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "human_gate=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check dependencies satisfied
+        env:
+          TASK_ID: ${{ needs.determine-mode.outputs.task_id }}
+        run: |
+          chmod +x scripts/read-build-plan.sh
+          ./scripts/read-build-plan.sh check-deps "$TASK_ID"
+
+      - name: Dispatch agent work — execute task
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TASK_ID: ${{ needs.determine-mode.outputs.task_id }}
+          TASK_FILE: ${{ steps.task.outputs.task_file }}
+          HUMAN_GATE: ${{ steps.task.outputs.human_gate }}
+        run: |
+          GATE_NOTE=""
+          GATE_LABEL=""
+          if [ "$HUMAN_GATE" = "true" ]; then
+            GATE_NOTE=$'\n**This task requires human review.** Add label `pipeline:human-gate` to your PR.'
+            GATE_LABEL=",pipeline:human-gate"
+          fi
+
+          ISSUE_URL=$(gh issue create \
+            --title "pipeline: Execute task ${TASK_ID}" \
+            --body "## Pipeline Agent Task: Execution Mode
+
+          **Task:** ${TASK_ID}
+          **Spec File:** ${TASK_FILE}
+          ${GATE_NOTE}
+
+          ### Instructions
+          1. Read \`.agent-rules.md\`, \`stack.yaml\`, and \`pipeline.yaml\`
+          2. Read the task file at \`${TASK_FILE}\` — it contains acceptance criteria, contracts, and scope
+          3. Implement the task as specified
+          4. Write tests covering all acceptance criteria
+          5. Open a PR with:
+             - Label \`pipeline:task\`
+             - Include \`<!-- pipeline-task-id: ${TASK_ID} -->\` in the PR body
+             - Branch naming \`task/${TASK_ID}\` is conventional but not required
+
+          ### Constraints
+          - Implement exactly what the task specifies — no more, no less
+          - All tests must pass
+          - CI will validate document chain and run tests
+
+          ### Post-Merge (Automated)
+          When your PR merges, \`task-complete.yml\` reads the task ID from the PR body and automatically marks this task done, then triggers the next available task." \
+            --label "pipeline:agent-task${GATE_LABEL}")
+          echo "issue_url=${ISSUE_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Update project board
+        if: success()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_URL="${{ steps.dispatch.outputs.issue_url }}"
+          if [ -n "$ISSUE_URL" ]; then
+            chmod +x scripts/update-project-board.sh
+            ./scripts/update-project-board.sh "$ISSUE_URL" "Dispatched" || true
+          fi
+
+  # ─── Discovery Mode: Signal Synthesis ──────────────────────
+  discovery-synthesis:
+    name: "Discovery: Synthesize Signals"
+    needs: determine-mode
+    if: needs.determine-mode.outputs.next_stage == 'discovery-synthesis'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Count available signals
+        id: count
+        run: |
+          SIGNAL_COUNT=$(find docs/01-raw-inputs -name "SIG-*.md" 2>/dev/null | wc -l | tr -d ' ')
+          THRESHOLD=$(grep -A2 'discovery:' pipeline.yaml | grep 'synthesis_threshold' | awk '{print $2}' || echo "5")
+          echo "count=${SIGNAL_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "threshold=${THRESHOLD}" >> "$GITHUB_OUTPUT"
+          echo "Signals: ${SIGNAL_COUNT}, Threshold: ${THRESHOLD}"
+
+      - name: Dispatch agent work — synthesize signals
+        id: dispatch
+        if: ${{ fromJSON(steps.count.outputs.count) >= fromJSON(steps.count.outputs.threshold) }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNAL_COUNT: ${{ steps.count.outputs.count }}
+        run: |
+          SIGNAL_LIST=$(find docs/01-raw-inputs -name "SIG-*.md" 2>/dev/null | sort)
+
+          ISSUE_URL=$(gh issue create \
+            --title "pipeline: Discovery synthesis — ${SIGNAL_COUNT} signals ready" \
+            --body "## Pipeline Agent Task: Discovery Synthesis
+
+          **Mode:** discovery / synthesis
+          **Signals Available:** ${SIGNAL_COUNT}
+
+          ### Signal Files
+          ${SIGNAL_LIST}
+
+          ### Instructions
+          1. Read \`.agent-rules.md\`, \`stack.yaml\`, and \`pipeline.yaml\`
+          2. Read \`docs/00-foundation/PROJECT.md\` and \`docs/00-foundation/PERSONAS.md\` for project context
+          3. Read ALL signal documents in \`docs/01-raw-inputs/\`
+          4. Identify common themes, patterns, and root problems
+          5. Synthesize into a product vision document at \`docs/02-discovery/SYNTHESIS.md\`
+          6. The synthesis doc must reference every signal it drew from
+          7. Open a PR with label \`pipeline:proposal\` for review
+          8. Suggested branch name: \`discovery/synthesis\` (convention only — pipeline uses labels, not branch names)
+
+          ### Important: Single Stage Per PR
+          This PR should ONLY contain discovery documents (\`docs/02-discovery/\`).
+          After the synthesis PR is approved and merged, the pipeline will automatically
+          dispatch the architecture phase to create foundational ADRs (database schema,
+          auth system, project structure, core user flows).
+
+          ### Constraints
+          - ONE artifact type per PR (discovery documents only)
+          - Do not create ADRs in this PR — the architecture phase handles that
+          - Read \`stack.yaml\` to note technology constraints for the synthesis narrative" \
+            --label "pipeline:agent-task")
+          echo "issue_url=${ISSUE_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Update project board
+        if: steps.dispatch.outputs.issue_url != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x scripts/update-project-board.sh
+          ./scripts/update-project-board.sh "${{ steps.dispatch.outputs.issue_url }}" "Synthesis" || true
+
+      - name: Below threshold — skip synthesis
+        if: ${{ fromJSON(steps.count.outputs.count) < fromJSON(steps.count.outputs.threshold) }}
+        run: |
+          echo "Only ${{ steps.count.outputs.count }} signals (need ${{ steps.count.outputs.threshold }}). Waiting for more."
+
+  # ─── Failure Notification ──────────────────────
+  notify-on-failure:
+    name: Alert on Pipeline Failure
+    runs-on: ubuntu-latest
+    if: failure()
+    needs: [determine-mode, run-discovery, run-architecture, run-specification, run-code, execute-build-plan-task, discovery-synthesis]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report failure
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "pipeline: Orchestrator failure — $(date -u '+%Y-%m-%d %H:%M UTC')" \
+            --body "The pipeline orchestrator failed. [View the run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})." \
+            --label "pipeline:failure"

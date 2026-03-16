@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Write",
+      "Edit",
+      "Bash(git *)",
+      "Bash(./scripts/*)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(python *)",
+      "Bash(pytest *)",
+      "Bash(pip *)",
+      "Bash(gh pr *)",
+      "Bash(gh issue *)",
+      "Bash(gh label *)",
+      "Bash(gh auth *)",
+      "Bash(gh api *)",
+      "Bash(gh repo *)",
+      "Bash(gh run *)",
+      "Bash(gh workflow *)",
+      "Bash(gh project *)",
+      "Bash(gh secret *)",
+      "Bash(chmod +x *)",
+      "Bash(jq *)",
+      "Bash(bc *)",
+      "Bash(mktemp *)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(git push --force*)",
+      "Bash(git reset --hard*)",
+      "Bash(git branch -D *)"
+    ]
+  }
+}

@@ -1,0 +1,46 @@
+# agent-orchestrator.yaml — Configuration for ao (Agent Orchestrator).
+#
+# ao spawns AI coding agents in isolated git worktrees. Each agent gets its own
+# branch and PR. ao handles CI failure retries and review comment forwarding.
+#
+# Docs: https://github.com/ComposioHQ/agent-orchestrator
+#
+# Quick start:
+#   1. Edit the project section below with your repo details
+#   2. Run: ao start
+#   3. Run: ./scripts/poll-and-spawn.sh my-project &
+#   4. ao auto-picks up pipeline:agent-task issues and spawns agents
+
+dataDir: ~/.agent-orchestrator
+worktreeDir: ~/.worktrees
+
+defaults:
+  runtime: tmux
+  agent: claude-code
+  workspace: worktree
+  notifiers: [desktop]
+
+projects:
+  my-project:                         # ← rename to match your project
+    repo: your-org/your-repo          # ← your GitHub org/repo
+    path: ~/path/to/your-repo         # ← local clone path
+    defaultBranch: main
+    sessionPrefix: bp
+
+    tracker:
+      plugin: github                  # GitHub Issues for task tracking
+
+    agentRulesFile: .agent-rules.md
+
+reactions:
+  ci-failed:
+    auto: true
+    action: send-to-agent
+    retries: 3
+  changes-requested:
+    auto: true
+    action: send-to-agent
+    escalateAfter: 30m
+  approved-and-green:
+    auto: false
+    action: notify

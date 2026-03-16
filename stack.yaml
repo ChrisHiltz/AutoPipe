@@ -1,0 +1,31 @@
+# stack.yaml — Technology constraints for this project.
+# Agents MUST use these choices. CI enforces compliance.
+# Update this file when you start a new project.
+
+project_name: "My Project"
+
+# Frontend
+ui_framework: ""           # e.g., "shadcn/ui", "material-ui", "chakra-ui"
+frontend_runtime: ""       # e.g., "Next.js", "Vite + React", "SvelteKit"
+
+# Backend
+backend_framework: ""      # e.g., "FastAPI", "Express", "Django", "Rails"
+database: ""               # e.g., "Supabase", "PostgreSQL", "MongoDB"
+auth: ""                   # e.g., "Supabase Auth", "NextAuth", "Clerk"
+
+# AI/Agent Layer (if applicable)
+llm_orchestration: ""      # e.g., "LangGraph", "CrewAI", "none"
+workflow_engine: ""        # e.g., "Inngest", "Temporal", "none"
+
+# Testing
+testing:
+  backend: ""              # e.g., "pytest", "jest", "go test"
+  frontend: ""             # e.g., "jest", "vitest", "playwright"
+  e2e: ""                  # e.g., "playwright", "cypress", "none"
+
+# Hosting/Deployment
+hosting: ""                # e.g., "Railway", "Vercel", "AWS", "fly.io"
+
+# Additional constraints (free-form)
+# Add any other tech mandates here. Agents will read this section.
+notes: ""

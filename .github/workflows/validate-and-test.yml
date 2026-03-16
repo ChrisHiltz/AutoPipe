@@ -1,0 +1,138 @@
+name: Pipeline Validation & Tests
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: validate-test-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate-docs:
+    name: Validate Document Pipeline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for diff-based orphan detection
+
+      - name: Validate cross-links and traceability
+        run: |
+          chmod +x scripts/validate-docs.sh
+          ./scripts/validate-docs.sh docs src
+
+  run-tests:
+    name: Run Test Suite
+    runs-on: ubuntu-latest
+    needs: validate-docs  # Tests only run if docs are valid
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect test framework from stack.yaml
+        id: detect
+        run: |
+          if [ ! -f stack.yaml ]; then
+            echo "No stack.yaml found, skipping tests"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+          # Parse testing config from stack.yaml
+          backend_test=$(grep -A5 'testing:' stack.yaml | grep 'backend:' | awk '{print $2}' | tr -d '"' || echo "")
+          frontend_test=$(grep -A5 'testing:' stack.yaml | grep 'frontend:' | awk '{print $2}' | tr -d '"' || echo "")
+          e2e_test=$(grep -A5 'testing:' stack.yaml | grep 'e2e:' | awk '{print $2}' | tr -d '"' || echo "")
+
+          echo "backend_test=$backend_test" >> "$GITHUB_OUTPUT"
+          echo "frontend_test=$frontend_test" >> "$GITHUB_OUTPUT"
+          echo "e2e_test=$e2e_test" >> "$GITHUB_OUTPUT"
+
+      - name: Enforce test configuration
+        if: steps.detect.outputs.skip != 'true'
+        run: |
+          # If source code exists in this PR, testing MUST be configured
+          SRC_FILES=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" -- src/ 2>/dev/null | grep -E '\.(js|ts|jsx|tsx|py|go|rs|java|rb|ex|cs|kt|swift|dart|cpp|c|h)$' || true)
+          if [ -n "$SRC_FILES" ]; then
+            BACKEND="${{ steps.detect.outputs.backend_test }}"
+            FRONTEND="${{ steps.detect.outputs.frontend_test }}"
+            if [ -z "$BACKEND" ] && [ -z "$FRONTEND" ]; then
+              echo "::error::Source code changes detected but no test framework configured in stack.yaml."
+              echo "::error::Set testing.backend and/or testing.frontend in stack.yaml before submitting code."
+              echo ""
+              echo "Changed source files:"
+              echo "$SRC_FILES"
+              exit 1
+            fi
+          fi
+
+      - name: Setup Python
+        if: steps.detect.outputs.skip != 'true' && steps.detect.outputs.backend_test == 'pytest'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Node.js
+        if: steps.detect.outputs.skip != 'true' && (steps.detect.outputs.frontend_test == 'jest' || steps.detect.outputs.frontend_test == 'vitest')
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Python dependencies
+        if: steps.detect.outputs.skip != 'true' && steps.detect.outputs.backend_test == 'pytest'
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f pyproject.toml ]; then pip install -e ".[dev]"; fi
+
+      - name: Install Node dependencies
+        if: steps.detect.outputs.skip != 'true' && (steps.detect.outputs.frontend_test == 'jest' || steps.detect.outputs.frontend_test == 'vitest')
+        run: |
+          if [ -f package-lock.json ]; then npm ci; fi
+          if [ -f pnpm-lock.yaml ]; then npx pnpm install --frozen-lockfile; fi
+          if [ -f bun.lockb ]; then npx bun install; fi
+
+      - name: Run backend tests
+        if: steps.detect.outputs.skip != 'true' && steps.detect.outputs.backend_test == 'pytest'
+        run: |
+          cd tests/backend 2>/dev/null || cd .
+          python -m pytest --tb=short -q || {
+            echo "::error::Backend tests failed. The agent should fix these."
+            exit 1
+          }
+
+      - name: Run frontend tests
+        if: steps.detect.outputs.skip != 'true' && steps.detect.outputs.frontend_test != ''
+        run: |
+          if [ "${{ steps.detect.outputs.frontend_test }}" = "jest" ]; then
+            npx jest --passWithNoTests || { echo "::error::Frontend tests failed."; exit 1; }
+          elif [ "${{ steps.detect.outputs.frontend_test }}" = "vitest" ]; then
+            npx vitest run --passWithNoTests || { echo "::error::Frontend tests failed."; exit 1; }
+          fi
+
+      - name: Run e2e tests
+        if: steps.detect.outputs.skip != 'true' && steps.detect.outputs.e2e_test == 'playwright'
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test || { echo "::error::E2E tests failed."; exit 1; }
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint Python (if present)
+        if: hashFiles('**/*.py') != ''
+        run: |
+          pip install ruff
+          ruff check src/ tests/ --output-format=github
+
+      - name: Lint TypeScript/JavaScript (if present)
+        if: hashFiles('package.json') != ''
+        run: |
+          if [ -f package-lock.json ]; then npm ci; fi
+          if [ -f pnpm-lock.yaml ]; then npx pnpm install --frozen-lockfile; fi
+          npx eslint src/ --no-error-on-unmatched-pattern

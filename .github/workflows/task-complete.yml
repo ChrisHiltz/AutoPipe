@@ -1,0 +1,135 @@
+name: Task Complete — Update Build Plan Status
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: task-complete-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  mark-task-done:
+    name: Mark Task Complete in Build Plan
+    runs-on: ubuntu-latest
+    # Trigger on merged PRs that carry the pipeline:task label (not branch-name dependent)
+    if: >
+      github.event.pull_request.merged == true &&
+      contains(github.event.pull_request.labels.*.name, 'pipeline:task')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Extract task ID from PR body or branch name
+        id: extract
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          # Primary: extract from HTML comment in PR body
+          # Format: <!-- pipeline-task-id: WS0-BB1-T1 -->
+          TASK_ID=$(echo "$PR_BODY" | grep -oP '(?<=<!-- pipeline-task-id: )\S+(?= -->)' || echo "")
+
+          # Fallback: extract from branch name (backward compat)
+          if [ -z "$TASK_ID" ]; then
+            TASK_ID=$(echo "$BRANCH" | sed 's|^task/||' | grep -oE 'WS[0-9]+-BB[0-9]+-T[0-9]+' || echo "")
+          fi
+
+          if [ -z "$TASK_ID" ]; then
+            echo "::warning::PR #${{ github.event.pull_request.number }} has pipeline:task label but no task ID found in body or branch name. Skipping."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "task_id=${TASK_ID}" >> "$GITHUB_OUTPUT"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "Extracted task ID: ${TASK_ID}"
+          fi
+
+      - name: Mark task as done
+        if: steps.extract.outputs.found == 'true'
+        env:
+          TASK_ID: ${{ steps.extract.outputs.task_id }}
+          AUTO_COMMIT_STATUS: "true"
+        run: |
+          chmod +x scripts/read-build-plan.sh
+          ./scripts/read-build-plan.sh status "$TASK_ID" done
+          echo "Marked ${TASK_ID} as done in .pipeline-status.json"
+
+      - name: Trigger next task pickup
+        if: steps.extract.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x scripts/read-build-plan.sh
+
+          # Read max_parallel_tasks from pipeline.yaml (default: 3)
+          MAX_PARALLEL=$(grep -A5 'execution:' pipeline.yaml | grep 'max_parallel_tasks:' | awk '{print $2}' || echo "3")
+          MAX_PARALLEL=${MAX_PARALLEL:-3}
+
+          NEXT_TASKS=$(./scripts/read-build-plan.sh next-batch "$MAX_PARALLEL")
+
+          if [ "$NEXT_TASKS" = "NO_TASKS" ]; then
+            echo "All tasks complete — build plan finished."
+          elif [ "$NEXT_TASKS" = "ALL_BLOCKED" ]; then
+            echo "No tasks available — remaining tasks have unmet dependencies."
+          else
+            DISPATCHED=0
+            while IFS= read -r TASK; do
+              [ -z "$TASK" ] && continue
+              echo "Dispatching task: ${TASK}"
+              gh workflow run pipeline-orchestrate.yml \
+                -f task_id="$TASK" \
+                -f mode_override="execution"
+              echo "Dispatched orchestrator for task ${TASK}"
+              DISPATCHED=$((DISPATCHED + 1))
+            done <<< "$NEXT_TASKS"
+            echo "Dispatched ${DISPATCHED} task(s) in parallel."
+          fi
+
+      - name: Update project board
+        if: steps.extract.outputs.found == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          PR_URL="${{ github.event.pull_request.html_url }}"
+          chmod +x scripts/update-project-board.sh
+          ./scripts/update-project-board.sh "$PR_URL" "Complete" || true
+
+  # Steady-state code PRs don't have pipeline:task label but should still move to "Complete"
+  mark-steady-state-complete:
+    name: Mark Steady-State Code Complete
+    runs-on: ubuntu-latest
+    if: >
+      github.event.pull_request.merged == true &&
+      !contains(github.event.pull_request.labels.*.name, 'pipeline:task')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 2
+
+      - name: Check if PR contains source code changes
+        id: check
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -c '^src/' || echo "0")
+          if [ "$CHANGED" -gt 0 ]; then
+            echo "has_code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update project board to Complete
+        if: steps.check.outputs.has_code == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          PR_URL="${{ github.event.pull_request.html_url }}"
+          chmod +x scripts/update-project-board.sh
+          ./scripts/update-project-board.sh "$PR_URL" "Complete" || true

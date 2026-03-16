@@ -1,0 +1,14 @@
+# CODEOWNERS — Auto-assign reviewers for Build-Pipe PRs.
+#
+# Replace @your-github-username with your actual GitHub username.
+# This file makes GitHub branch protection enforce the right reviewer
+# for proposals (discovery, architecture, spec docs) and code.
+
+# Proposal documents — require owner review before merge
+docs/02-discovery/    @your-github-username
+docs/03-architecture/ @your-github-username
+docs/04-specs/        @your-github-username
+
+# Code — require owner review before merge
+src/                  @your-github-username
+tests/                @your-github-username

@@ -118,6 +118,34 @@ jobs:
           npx playwright install --with-deps chromium
           npx playwright test || { echo "::error::E2E tests failed."; exit 1; }
 
+  check-template-workarounds:
+    name: Check for Unreported Template Issues
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan template infrastructure files for workaround patterns
+        run: |
+          # Only scan template infrastructure files — never product code in src/ or tests/
+          TEMPLATE_PATHS="scripts/ .github/workflows/ .templates/ .agent-rules.md CLAUDE.md pipeline.yaml stack.yaml .claude/skills/"
+
+          # Get added lines in template infrastructure files changed by this PR
+          DIFF_HITS=$(git diff "origin/${{ github.base_ref }}...HEAD" -- $TEMPLATE_PATHS \
+            | grep -E '^\+[^+]' \
+            | grep -iE 'WORKAROUND|HACK|FIXME|BUG:|template.bug|template.issue' \
+            || true)
+
+          if [ -n "$DIFF_HITS" ]; then
+            echo "::warning::Potential template infrastructure issues detected in this PR but no upstream Issue was filed. If you encountered a Build-Pipe bug, report it to the upstream template repo. See Rule 7 in .agent-rules.md."
+            echo ""
+            echo "Matches found in template files:"
+            echo "$DIFF_HITS"
+          else
+            echo "No unreported template workarounds detected."
+          fi
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

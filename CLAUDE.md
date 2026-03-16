@@ -5,7 +5,7 @@ You are operating within the Build-Pipe document pipeline. Every action you take
 ## Mandatory Reading
 
 Before doing ANY work, read these files:
-1. `.agent-rules.md` — The six rules you must obey. Violations fail CI.
+1. `.agent-rules.md` — The seven rules you must obey. Violations fail CI.
 2. `stack.yaml` — Technology constraints. Use only what's specified.
 3. `pipeline.yaml` — Current pipeline mode and configuration.
 4. `docs/00-foundation/PROJECT.md` — Project vision, target users, success metrics.

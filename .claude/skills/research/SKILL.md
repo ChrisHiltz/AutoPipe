@@ -19,7 +19,13 @@ From Karpathy's autoresearch: **one metric, one eval, iterate.** You modify one 
 
 ## The Loop
 
-For each iteration (up to `max_iterations`):
+**MANDATORY:** You MUST attempt ALL iterations from 1 through `max_iterations`. Do NOT stop after the first improvement — compound improvements are the goal. Each successful change raises the baseline for the next iteration.
+
+For iteration X of `max_iterations` (announce each iteration with this header):
+
+```
+=== ITERATION X of {max_iterations} ===
+```
 
 ### 1. Measure Baseline (first iteration only)
 
@@ -29,7 +35,7 @@ For synthetic evals, this typically means:
 - Create a temporary test directory structure
 - Generate test documents using the current artifact
 - Run the validation/check
-- Count passes, failures, or whatever the metric measures
+- Run the eval script/procedure and record a single numeric score. The eval MUST produce a concrete number (e.g., 3/5 test cases pass = 0.60, 0 violations out of 3 documents = 1.00). Never use subjective assessments like "improved" or "looks better" — only numbers
 
 ### 2. Form Hypothesis
 
@@ -54,6 +60,8 @@ else:
 
 For metrics where lower is better (failure count, time), flip the comparison.
 
+**Whether you KEEP or DISCARD, proceed to the next iteration.** A discarded change means you learned something — use that learning to form a better hypothesis. A kept change means the baseline just improved — build on it.
+
 ### 6. Record
 
 Track each iteration internally:
@@ -65,6 +73,15 @@ Iteration 2: hypothesis="add cross-link validator hint", result=no change (1.00 
 ### 7. Next Iteration
 
 Use learnings from this iteration to form the next hypothesis. If you kept a change, the baseline for the next iteration is the new (improved) number.
+
+### Stop Conditions
+
+You may ONLY exit the loop early if:
+1. You have completed ALL `max_iterations`
+2. The metric has reached or exceeded the `target` value from the research task AND you have completed at least 3 iterations
+3. The `time_budget_minutes` has been exceeded
+
+If none of these conditions are met, you MUST continue to the next iteration. "I can't think of more hypotheses" is not a valid stop condition — try a different angle, a different section of the artifact, or a reversal of a previous hypothesis.
 
 ## After the Loop
 
@@ -199,6 +216,7 @@ Test whether modified instructions produce better agent behavior.
 - `agent-orchestrator.yaml` — ao configuration
 - `scripts/nightly-cycle.sh` — the nightly cycle itself
 - `scripts/collect-metrics.sh` — metrics collection
+- `scripts/submit-upstream.sh` — upstream contribution submission
 - `.claude/skills/dispatch/SKILL.md` — dispatch agent
 - `.claude/skills/research/SKILL.md` — this file (no self-modification)
 - `docs/06-operations/research-strategy.md` — human's strategy

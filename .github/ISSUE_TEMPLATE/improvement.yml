@@ -1,0 +1,51 @@
+name: Template Improvement
+description: Report a bug or improvement in Build-Pipe template infrastructure
+title: "[improvement] "
+labels: ["improvement"]
+body:
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How much does this impact pipeline reliability or usability?
+      options:
+        - "Critical — Pipeline is broken, blocks all progress"
+        - "High — Key feature fails, requires workaround"
+        - "Medium — Friction or missing automation"
+        - "Low — Minor inconvenience or edge case"
+    validations:
+      required: true
+
+  - type: input
+    id: component
+    attributes:
+      label: Component
+      description: File path or system area affected
+      placeholder: "e.g., scripts/setup-labels.sh"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What is broken, why it matters, and suggested fix if known
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Context
+      description: What were you doing when you discovered this? Include error messages if available.
+    validations:
+      required: false
+
+  - type: input
+    id: fork-repo
+    attributes:
+      label: Fork Repository
+      description: Which fork discovered this issue (if submitted from a fork)
+      placeholder: "e.g., org/project-name"
+    validations:
+      required: false

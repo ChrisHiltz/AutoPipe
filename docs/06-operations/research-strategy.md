@@ -50,7 +50,7 @@ The research agent MAY modify these files during experiments:
 - `.templates/adr_template.md` — ADR (architecture) template
 - `.templates/prd_template.md` — PRD (specification) template
 - `CLAUDE.md` — agent pipeline instructions
-- `.agent-rules.md` — the 5 mandatory agent rules
+- `.agent-rules.md` — the 7 mandatory agent rules
 - `scripts/validate-docs.sh` — document validation logic
 - `scripts/ingest-signal.sh` — signal processing script
 
@@ -68,6 +68,7 @@ The research agent MUST NOT modify these files:
 - `scripts/nightly-cycle.sh` — the research system orchestrator
 - `scripts/collect-metrics.sh` — metrics collection
 - `scripts/poll-and-spawn.sh` — agent dispatch bridge
+- `scripts/submit-upstream.sh` — upstream contribution submission
 - `.claude/skills/dispatch/SKILL.md` — dispatch agent instructions
 - `.claude/skills/research/SKILL.md` — research agent instructions
 - `docs/06-operations/research-strategy.md` — this file
@@ -84,6 +85,9 @@ Every experiment MUST:
 3. Compare results quantitatively (not "it looks better")
 4. Be revertable — use `git checkout` if no improvement
 5. Log results to `research-log.jsonl` regardless of outcome
+6. Attempt ALL iterations specified by `max_iterations` (minimum 3). Early
+   termination is only permitted when the target metric is reached or the
+   time budget is exceeded
 
 ---
 
@@ -95,3 +99,8 @@ Every experiment MUST:
 - If a metric plateaus despite multiple experiments, it may need structural changes
   beyond what artifact modification can achieve. The dispatch agent will flag this
   as an ESCALATE case for you to review.
+- When `template.upstream_repo` is set in `pipeline.yaml`, successful research
+  experiments are automatically submitted as cross-fork PRs to the upstream
+  template repo. Only upstream-relevant files are included via cherry-pick in
+  an isolated worktree — no project files leak. This is best-effort; failures
+  do not affect the local research cycle.

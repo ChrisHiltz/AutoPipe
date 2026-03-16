@@ -12,7 +12,7 @@ if ! command -v gh &>/dev/null; then
   exit 1
 fi
 
-if ! gh auth status &>/dev/null; then
+if ! gh auth status --hostname github.com &>/dev/null; then
   echo "ERROR: gh CLI not authenticated. Run: gh auth login"
   exit 1
 fi
@@ -30,6 +30,11 @@ LABELS=(
   "pipeline:claimed|c2e0c6|Applied by poll-and-spawn to prevent double-dispatch"
   "pipeline:human-gate|fbca04|Tasks requiring human review"
   "pipeline:failure|b60205|Pipeline failure notifications"
+  "improvement|1d76db|Template improvement submitted from a fork"
+  "improvement:critical|d73a4a|Critical — pipeline is broken"
+  "improvement:high|e99695|High — key feature fails"
+  "improvement:medium|fbca04|Medium — friction or missing automation"
+  "improvement:low|c5def5|Low — minor inconvenience"
 )
 
 echo "Creating Build-Pipe labels..."
@@ -44,15 +49,15 @@ for ENTRY in "${LABELS[@]}"; do
 
   if gh label create "$NAME" --color "$COLOR" --description "$DESC" 2>/dev/null; then
     echo "  + $NAME (created)"
-    ((CREATED++))
+    CREATED=$((CREATED + 1))
   else
     # Label likely already exists — verify
     if gh label list --json name -q '.[].name' 2>/dev/null | grep -qx "$NAME"; then
       echo "  - $NAME (already exists, skipped)"
-      ((SKIPPED++))
+      SKIPPED=$((SKIPPED + 1))
     else
       echo "  ! $NAME (failed to create)"
-      ((FAILED++))
+      FAILED=$((FAILED + 1))
     fi
   fi
 done

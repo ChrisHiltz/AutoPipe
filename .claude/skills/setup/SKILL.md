@@ -17,7 +17,7 @@ Before anything else, verify the user's environment is ready. Run these checks s
 
 ```bash
 # Check gh CLI
-gh auth status 2>&1
+gh auth status --hostname github.com 2>&1
 
 # Check jq
 jq --version 2>&1
@@ -27,6 +27,43 @@ command -v ao 2>&1 || echo "ao not installed (optional — pipeline works withou
 ```
 
 Report which prerequisites are met and which are missing. If `gh` is not authenticated, stop and help them run `gh auth login` first — nothing else works without it.
+
+### 1a. jq Installation (if missing)
+
+If `jq --version` fails, install it automatically based on the platform:
+
+**macOS:**
+```bash
+brew install jq
+```
+
+**Linux (Debian/Ubuntu):**
+```bash
+sudo apt-get install -y jq
+```
+
+**Linux (Fedora/RHEL):**
+```bash
+sudo dnf install -y jq
+```
+
+**Windows:**
+```bash
+winget install jqlang.jq
+```
+
+On Windows, `winget` updates PATH but the current shell session won't see it. After install, find the binary and add it to PATH for the current session:
+```bash
+# Find where winget installed jq
+JQ_PATH=$(find "$LOCALAPPDATA/Microsoft/WinGet" -name "jq.exe" 2>/dev/null | head -1)
+if [ -n "$JQ_PATH" ]; then
+  export PATH="$(dirname "$JQ_PATH"):$PATH"
+fi
+# Verify
+jq --version
+```
+
+If automatic install fails, direct the user to https://jqlang.github.io/jq/download/.
 
 ### 1b. Agent Orchestrator (ao) — Optional Install
 
@@ -127,6 +164,21 @@ Ask the user to choose their pipeline mode. Explain each option briefly:
 
 Default recommendation: If the user isn't sure, suggest `steady-state` — it's the most common starting point and works for any project that already has a codebase.
 
+### 2e. Upstream Template Repo
+
+Detect if this repo was forked from an upstream Build-Pipe template:
+
+```bash
+# Check if the repo has a parent (fork source)
+gh repo view --json parent -q '.parent.nameWithOwner' 2>/dev/null
+```
+
+If a parent is found, confirm with the user: "This repo was forked from `org/AutoPipe`. I'll set that as `template.upstream_repo` in `pipeline.yaml` so agents can auto-report template bugs back to the upstream. OK?"
+
+If no parent is detected (e.g., the template was copied rather than forked), ask: "Was this repo copied from a Build-Pipe template? If so, what's the upstream repo? (format: org/repo, or leave blank to skip)"
+
+Store the value for Phase 4b.
+
 ---
 
 ## Phase 3: Tech Stack
@@ -213,7 +265,7 @@ Replace the placeholder values with the user's choices. Keep empty strings for f
 
 ### 4b. Update `pipeline.yaml`
 
-Set line 13 (`mode:`) to the user's chosen mode.
+Set line 13 (`mode:`) to the user's chosen mode. If the user provided an upstream template repo in Phase 2e, set `template.upstream_repo` to that value.
 
 ### 4c. Update `.github/CODEOWNERS`
 
@@ -234,12 +286,32 @@ Run the setup script to create all pipeline labels:
 ./scripts/setup-labels.sh
 ```
 
-This creates all 11 pipeline labels. If any already exist, the script skips them gracefully.
+This creates all pipeline labels. If any already exist, the script skips them gracefully.
 
-### 4f. Make Scripts Executable
+### 4f. Create Project Board
+
+Run the setup script with the project name from Phase 2:
 
 ```bash
-chmod +x scripts/ingest-signal.sh scripts/validate-docs.sh scripts/read-build-plan.sh scripts/poll-and-spawn.sh scripts/setup-labels.sh scripts/collect-metrics.sh scripts/nightly-cycle.sh scripts/setup-project-board.sh scripts/update-project-board.sh
+./scripts/setup-project-board.sh "{project-name}"
+```
+
+This creates a GitHub Project with a "Pipeline Stage" field and 8 stages: Signal Received → Discovery → Synthesis → Architecture → Specification → Dispatched → Code → Complete. Show the user the project board URL from the script output.
+
+### 4g. Set Up Branch Protection
+
+Run the branch protection script:
+
+```bash
+./scripts/setup-branch-protection.sh
+```
+
+This configures `main` with: required PR reviews (1 approval), required status checks (`Validate Document Pipeline`, `Run Test Suite`), and required Code Owner reviews. If the repo is on a free plan with private visibility, the script will warn and print manual instructions — this is non-blocking.
+
+### 4h. Make Scripts Executable
+
+```bash
+chmod +x scripts/ingest-signal.sh scripts/validate-docs.sh scripts/read-build-plan.sh scripts/poll-and-spawn.sh scripts/setup-labels.sh scripts/collect-metrics.sh scripts/nightly-cycle.sh scripts/setup-project-board.sh scripts/update-project-board.sh scripts/setup-branch-protection.sh
 ```
 
 ---
@@ -286,29 +358,13 @@ git commit -m "feat: initialize Build-Pipe pipeline"
 
 ---
 
-## Phase 5b: GitHub Project Board (Recommended)
+## Phase 5b: Project Board Automation (Optional)
 
-Ask the user: "Would you like a GitHub Project board for visual pipeline tracking? It creates a Kanban board that auto-updates as signals flow through the pipeline. (Recommended)"
+The project board was created in Phase 4f. For it to auto-update when workflows run, the user needs a Personal Access Token stored as a repository secret. This is optional — the board works for manual tracking without it.
 
-If yes:
+Explain to the user: "Your project board is ready. For it to auto-update as signals flow through the pipeline, you need a Personal Access Token. This takes about 2 minutes. Want to set it up now?"
 
-### 5b-1. Create the Project Board
-
-Run the setup script with the project name from Phase 2:
-
-```bash
-./scripts/setup-project-board.sh "{project-name}"
-```
-
-This creates a GitHub Project with a "Pipeline Stage" field and 6 stages: Signal Received → Discovery → Architecture → Specification → Code → Complete.
-
-Show the user the project board URL from the script output.
-
-### 5b-2. Set Up Workflow Automation (Optional but Recommended)
-
-Explain to the user: "The project board is created. For it to auto-update when the pipeline runs, you need a Personal Access Token stored as a repository secret. This takes about 2 minutes."
-
-Walk them through:
+If yes, walk them through:
 
 1. "Go to https://github.com/settings/tokens?type=beta"
 2. "Click 'Generate new token'"
@@ -322,7 +378,7 @@ Walk them through:
    ```
    (Paste the token when prompted)
 
-If the user wants to skip this step, that's fine — the project board still works for manual tracking, and workflows will gracefully skip board updates without the token.
+If the user skips this, workflows will gracefully skip board updates.
 
 ---
 
@@ -330,10 +386,10 @@ If the user wants to skip this step, that's fine — the project board still wor
 
 After everything is configured, give the user a clear summary:
 
-1. **What's set up:** List all config changes made (tech stack, pipeline mode, labels, CODEOWNERS, foundation docs, project board)
+1. **What's set up:** List all config changes made (tech stack, pipeline mode, labels, CODEOWNERS, foundation docs, project board, branch protection)
 2. **How to test it:** "Create a GitHub Issue with label `signal:feature` and watch the Actions tab — `signal-ingestion.yml` should fire and create a PR."
-3. **Branch protection (manual):** "Go to repo Settings > Branches > Add rule for `main` with: require PR reviews (1), require status checks (`Validate Document Pipeline`, `Run Test Suite`), require CODEOWNERS review."
-4. **Project board:** If created, share the URL. Remind them about the PAT setup if they skipped it.
+3. **Branch protection:** If setup succeeded, confirm it's active. If it failed (free plan + private repo), remind them to set it up manually when they upgrade or make the repo public.
+4. **Project board:** Share the project board URL. Remind them about the PAT setup if they skipped Phase 5b.
 5. **Foundation docs:** "Your project context is in `docs/00-foundation/`. Update these files as your product evolves — agents read them during discovery, architecture, and specification stages."
 6. **Agent Orchestrator (if ao is installed):** "Start ao with `ao start`, then run `./scripts/poll-and-spawn.sh {project-slug} &` to enable auto-dispatch. Run `ao dashboard` to open the monitoring UI."
 7. **Agent Orchestrator (if ao is NOT installed):** "Find pending work with `gh issue list --label 'pipeline:agent-task' --state open` and process them manually with `claude`. You can install ao later by running `/setup` again or manually: `gh repo clone ComposioHQ/agent-orchestrator ~/.agent-orchestrator && cd ~/.agent-orchestrator && pnpm install && pnpm build && npm link -g packages/cli`."

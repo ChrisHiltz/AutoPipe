@@ -41,7 +41,7 @@ if ! command -v claude &>/dev/null; then
   exit 1
 fi
 
-if ! gh auth status &>/dev/null 2>&1; then
+if ! gh auth status --hostname github.com &>/dev/null 2>&1; then
   log "${RED}ERROR:${NC} gh not authenticated. Run: gh auth login"
   exit 1
 fi
@@ -137,40 +137,47 @@ fi
 # ─── Step 3: Research ──────────────────────────────────
 log "${GREEN}Step 3:${NC} Running autoresearch cycle..."
 
-timeout 1800 claude -p "$(cat <<'RESEARCH_PROMPT'
-You are the Build-Pipe research agent. Follow the autoresearch methodology to improve
-one pipeline artifact based on the dispatch agent's research task.
+# Load the full research skill instructions (single source of truth)
+SKILL_FILE=".claude/skills/research/SKILL.md"
+if [ ! -f "$SKILL_FILE" ]; then
+  log "${RED}ERROR:${NC} Research skill file not found at ${SKILL_FILE}"
+  exit 1
+fi
+SKILL_CONTENT=$(cat "$SKILL_FILE")
 
-## Steps
-1. Read `docs/06-operations/current-research-task.json` — your assignment
-2. Read `docs/06-operations/research-strategy.md` — constraints and off-limits list
-3. Read the artifact file specified in the task
-4. Measure the baseline using the eval described in the task
-5. Run the improvement loop:
-   a. Form a hypothesis about what change would help
-   b. Make the change to the artifact
-   c. Run the eval again
-   d. If improved: keep the change, commit to a new branch
-   e. If not improved: revert, try a different approach
-   f. Repeat up to max_iterations times
-6. Log results to `docs/06-operations/research-log.jsonl` (append one JSON line)
-7. If any improvement was found:
-   - Open a PR on branch `research/{date}-{metric}` with label `pipeline:proposal`
-   - PR body must show: baseline → final metric, what changed, evidence
-8. If no improvement: log "NO_IMPROVEMENT" and do not open a PR
+timeout 1800 claude -p "$(cat <<RESEARCH_PROMPT
+You are the Build-Pipe research agent running in automated nightly mode.
 
-## Research Log Entry Format
-Append one line to research-log.jsonl:
-{"date":"YYYY-MM-DD","target_metric":"...","artifact":"...","hypothesis":"...","iterations":N,"kept":N,"discarded":N,"baseline":0.0,"final":0.0,"improved":true/false}
+## Full Research Protocol
 
-## Rules
+Follow these instructions exactly:
+
+${SKILL_CONTENT}
+
+## Nightly Mode Reminders
+
+- Your assignment is in docs/06-operations/current-research-task.json
+- You MUST attempt ALL iterations specified in max_iterations — do not stop early
+- Log results to docs/06-operations/research-log.jsonl when done
+- If improved: open a PR on branch research/{date}-{metric} with label pipeline:proposal
+- If not improved: log and exit without opening a PR
 - NEVER modify files listed as off-limits in research-strategy.md
 - NEVER modify the research system itself (nightly-cycle.sh, collect-metrics.sh, skills)
-- Always measure baseline BEFORE making changes
-- Always revert if a change doesn't improve the metric
-- Commit each successful iteration separately for clear git history
-- All improvements must flow through a PR — never push to main directly
 RESEARCH_PROMPT
 )"
+
+# ─── Step 4: Submit to upstream (best-effort) ───────────
+UPSTREAM_REPO=$(grep 'upstream_repo:' pipeline.yaml | awk '{print $2}' | tr -d '"' | tr -d "'" 2>/dev/null || echo "")
+if [ -n "$UPSTREAM_REPO" ] && [ "$UPSTREAM_REPO" != "" ]; then
+  RESEARCH_BRANCH=$(git branch --list 'research/*' --sort=-committerdate 2>/dev/null | head -1 | tr -d ' *')
+  if [ -n "$RESEARCH_BRANCH" ]; then
+    log "${GREEN}Step 4:${NC} Submitting improvements to upstream (best-effort)..."
+    chmod +x scripts/submit-upstream.sh 2>/dev/null || true
+    ./scripts/submit-upstream.sh "$RESEARCH_BRANCH" "$UPSTREAM_REPO" || \
+      log "${YELLOW}WARN:${NC} Upstream submission failed (non-blocking)"
+  fi
+else
+  log "No upstream repo configured. Skipping upstream submission."
+fi
 
 log "${GREEN}Nightly cycle complete.${NC}"

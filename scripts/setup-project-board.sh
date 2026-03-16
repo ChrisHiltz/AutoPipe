@@ -28,13 +28,19 @@ if ! command -v gh &>/dev/null; then
   exit 1
 fi
 
-if ! gh auth status &>/dev/null 2>&1; then
+if ! gh auth status --hostname github.com &>/dev/null 2>&1; then
   log "${RED}ERROR:${NC} gh not authenticated. Run: gh auth login"
   exit 1
 fi
 
 if ! command -v jq &>/dev/null; then
-  log "${RED}ERROR:${NC} jq not found. Install: https://jqlang.github.io/jq/download/"
+  log "${RED}ERROR:${NC} jq not found."
+  log "  Install jq for your platform:"
+  log "    macOS:   brew install jq"
+  log "    Ubuntu:  sudo apt-get install -y jq"
+  log "    Fedora:  sudo dnf install -y jq"
+  log "    Windows: winget install jqlang.jq  (restart your terminal after install)"
+  log "  Or download from: https://jqlang.github.io/jq/download/"
   exit 1
 fi
 

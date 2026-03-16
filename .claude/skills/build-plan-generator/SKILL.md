@@ -42,9 +42,9 @@ Create a TodoWrite checklist with these items:
 10. Extract contracts (schema/API/type) from all tasks
 11. Dispatch build-plan-reviewer and architecture-guard subagents
 12. Address review findings
-13. Run validate_plan.py against generated plan
+13. Run scripts/validate_plan.py against generated plan
 14. Generate final plan summary
-15. Present plan to user for review
+15. Present plan to user and hand off to review
 
 ---
 
@@ -135,9 +135,34 @@ Step 13: PLAN SUMMARY → PLAN-SUMMARY.md + REVIEW-CHECKLIST.md
   human gates count, risk count, parallelization analysis.
   Include task density table: tasks per workstream with ratios.
 
-Step 14: PRESENT TO USER
-  Show the plan summary. Ask user to review.
-  DO NOT proceed without explicit approval.
+Step 14: PRESENT TO USER + REVIEW HANDOFF
+  Show the plan summary stats (workstream count, task count, estimated hours,
+  human gates, risks, parallelization analysis, task density table).
+
+  Then present review handoff options:
+
+  "Your build plan is ready. How would you like to proceed?"
+
+  1. "Submit for comprehensive review" (Recommended)
+     → Invoke /buildplan-review
+     This runs the full review skill against the generated plan,
+     checking structural integrity, dependency correctness, product
+     alignment, and execution readiness.
+
+  2. "Submit with focus notes"
+     → Ask user for specific areas of concern or attention
+     → Write their notes to build-plan/REVIEW-FOCUS.md
+     → Then invoke /buildplan-review
+     The reviewer will prioritize the flagged areas while still
+     performing the full review.
+
+  3. "Skip review" (NOT recommended for autonomous execution)
+     → Accept the plan as-is without review
+     Warn: "Skipping review is not recommended if this plan will
+     drive autonomous agent execution. Unreviewed plans have higher
+     risk of dependency errors, missing gates, and scope drift."
+
+  DO NOT proceed without the user making an explicit choice.
 ```
 
 ---

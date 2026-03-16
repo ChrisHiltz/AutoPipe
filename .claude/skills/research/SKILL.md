@@ -217,6 +217,9 @@ Test whether modified instructions produce better agent behavior.
 - `scripts/nightly-cycle.sh` — the nightly cycle itself
 - `scripts/collect-metrics.sh` — metrics collection
 - `scripts/submit-upstream.sh` — upstream contribution submission
+- `.claude/skills/pipeline/SKILL.md` — pipeline management skill
+- `.claude/skills/build-plan-generator/` — build plan generation skill
+- `.claude/skills/buildplan-review/` — build plan review and certification skill
 - `.claude/skills/dispatch/SKILL.md` — dispatch agent
 - `.claude/skills/research/SKILL.md` — this file (no self-modification)
 - `docs/06-operations/research-strategy.md` — human's strategy

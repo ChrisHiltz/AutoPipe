@@ -71,6 +71,9 @@ The research agent MUST NOT modify these files:
 - `scripts/submit-upstream.sh` — upstream contribution submission
 - `.claude/skills/dispatch/SKILL.md` — dispatch agent instructions
 - `.claude/skills/research/SKILL.md` — research agent instructions
+- `.claude/skills/pipeline/SKILL.md` — pipeline management skill
+- `.claude/skills/build-plan-generator/` — build plan generation skill
+- `.claude/skills/buildplan-review/` — build plan review and certification skill
 - `docs/06-operations/research-strategy.md` — this file
 - `pipeline-metrics.jsonl` — metrics data (append-only by collect-metrics.sh)
 

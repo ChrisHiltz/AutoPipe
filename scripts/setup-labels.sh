@@ -35,6 +35,7 @@ LABELS=(
   "improvement:high|e99695|High — key feature fails"
   "improvement:medium|fbca04|Medium — friction or missing automation"
   "improvement:low|c5def5|Low — minor inconvenience"
+  "pipeline:errata|d93f0b|ADR inaccuracies flagged by code agents"
 )
 
 echo "Creating Build-Pipe labels..."

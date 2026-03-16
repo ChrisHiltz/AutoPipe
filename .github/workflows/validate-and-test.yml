@@ -6,6 +6,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  issues: write
 
 concurrency:
   group: validate-test-${{ github.event.pull_request.number }}
@@ -164,3 +165,58 @@ jobs:
           if [ -f package-lock.json ]; then npm ci; fi
           if [ -f pnpm-lock.yaml ]; then npx pnpm install --frozen-lockfile; fi
           npx eslint src/ --no-error-on-unmatched-pattern
+
+  parse-errata:
+    name: Create Errata Issues from Code PRs
+    runs-on: ubuntu-latest
+    # Only run on PRs that touch source code (code agents may flag ADR inaccuracies)
+    if: >
+      github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for errata comments in PR body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          PR_BODY="${{ github.event.pull_request.body }}"
+
+          # Extract errata comments: <!-- errata: ADR-{n} -- {description} -->
+          ERRATA=$(echo "$PR_BODY" | grep -oP '<!-- errata: \K[^>]+(?= -->)' || true)
+
+          if [ -z "$ERRATA" ]; then
+            echo "No errata comments found in PR body."
+            exit 0
+          fi
+
+          echo "Found errata comments — creating issues:"
+          echo "$ERRATA"
+
+          # Process each errata line
+          echo "$ERRATA" | while IFS= read -r line; do
+            [ -z "$line" ] && continue
+
+            # Parse: "ADR-{n} -- {description}"
+            ADR_ID=$(echo "$line" | sed 's/ -- .*//')
+            DESCRIPTION=$(echo "$line" | sed 's/^[^ ]* -- //')
+
+            echo "Creating errata issue for ${ADR_ID}..."
+            gh issue create \
+              --title "errata: ${ADR_ID} — ${DESCRIPTION}" \
+              --body "$(cat <<EOF
+          ## ADR Errata
+
+          **Flagged by:** PR #${PR_NUMBER} (${PR_URL})
+          **ADR:** ${ADR_ID}
+          **Issue:** ${DESCRIPTION}
+
+          A code implementation agent discovered that ${ADR_ID}'s codebase analysis contains inaccuracies. The ADR should be reviewed and updated.
+
+          ---
+          *Auto-created by Build-Pipe errata detection.*
+          EOF
+              )" \
+              --label "pipeline:errata" || echo "::warning::Failed to create errata issue for ${ADR_ID}"
+          done

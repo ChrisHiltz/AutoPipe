@@ -197,16 +197,10 @@ jobs:
           ${PRBS}
 
           ### Instructions
-          1. Read \`.agent-rules.md\`, \`stack.yaml\`, and \`pipeline.yaml\`
-          2. Read \`docs/00-foundation/CONSTRAINTS.md\` for compliance, performance, and security requirements
-          3. Read each PRB listed above
-          4. Create an Architecture Decision Record (ADR) using \`.templates/adr_template.md\`
-          5. Save to \`docs/03-architecture/ADR-{issue-number}.md\`
-          6. Ensure the ADR links back to the PRB (cross-linking rule)
-          7. Read \`stack.yaml\` for technology constraints
-          8. Ensure architecture respects constraints from CONSTRAINTS.md (performance budgets, compliance, security)
-          9. Open a PR with label \`pipeline:proposal\` for approval
-          10. Suggested branch name: \`architecture/{issue-number}\` (convention only — pipeline uses labels, not branch names)
+          Follow the **Stage 2: Architecture (ADR)** instructions in CLAUDE.md.
+          Read the approved PRBs listed above.
+          Open a PR with label \`pipeline:proposal\` for approval.
+          Suggested branch name: \`architecture/{issue-number}\` (convention only).
 
           ### Constraints
           - ONE artifact type per PR (architecture documents only)
@@ -253,16 +247,10 @@ jobs:
           ${ADRS}
 
           ### Instructions
-          1. Read \`.agent-rules.md\`, \`stack.yaml\`, and \`pipeline.yaml\`
-          2. Read \`docs/00-foundation/BRAND.md\` for UX and design principles when spec involves user-facing features
-          3. Read each ADR listed above
-          4. Create a Specification (PRD) using \`.templates/prd_template.md\`
-          5. Save to \`docs/04-specs/PRD-{issue-number}.md\`
-          6. Ensure the PRD links back to the ADR (cross-linking rule)
-          7. Include testable boolean acceptance criteria
-          8. List exact test file paths and source files in 'Files to Create/Modify'
-          9. Open a PR with label \`pipeline:proposal\` for approval
-          10. Suggested branch name: \`spec/{issue-number}\` (convention only — pipeline uses labels, not branch names)
+          Follow the **Stage 3: Specification (PRD)** instructions in CLAUDE.md.
+          Read the approved ADRs listed above.
+          Open a PR with label \`pipeline:proposal\` for approval.
+          Suggested branch name: \`spec/{issue-number}\` (convention only).
 
           ### Constraints
           - ONE artifact type per PR (specification documents only)
@@ -309,13 +297,10 @@ jobs:
           ${PRDS}
 
           ### Instructions
-          1. Read \`.agent-rules.md\`, \`stack.yaml\`, and \`pipeline.yaml\`
-          2. Read each PRD listed above
-          3. Write implementation code in \`src/\` matching the PRD
-          4. Write tests in \`tests/\` covering all acceptance criteria
-          5. Add \`# Implements: PRD-{n}\` comments in new source files
-          6. Open a PR for review
-          7. Suggested branch name: \`code/{issue-number}\` (convention only — pipeline uses labels, not branch names)
+          Follow the **Stage 4: Code** instructions in CLAUDE.md.
+          Read each PRD listed above.
+          Open a PR for review.
+          Suggested branch name: \`code/{issue-number}\` (convention only).
 
           ### Constraints
           - Satisfy every acceptance criterion in the PRD

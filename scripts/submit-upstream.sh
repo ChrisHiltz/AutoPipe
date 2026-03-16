@@ -21,6 +21,13 @@ WORKTREE_DIR=""
 # ─── Helpers ────────────────────────────────────────────
 log() { echo "[submit-upstream] $1"; }
 
+# Cross-platform python (python3 on Linux/macOS, python on Windows)
+PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo "")
+if [ -z "$PY" ]; then
+  log "Python not found. Skipping."
+  exit 0
+fi
+
 cleanup() {
   if [ -n "$WORKTREE_DIR" ] && [ -d "$WORKTREE_DIR" ]; then
     git worktree remove "$WORKTREE_DIR" --force 2>/dev/null || true
@@ -69,14 +76,20 @@ fi
 LOG_FILE="docs/06-operations/research-log.jsonl"
 if [ -f "$LOG_FILE" ]; then
   LAST_LOG=$(tail -1 "$LOG_FILE" 2>/dev/null || echo "{}")
-  TARGET_METRIC=$(echo "$LAST_LOG" | jq -r '.target_metric // "unknown"' 2>/dev/null || echo "unknown")
-  ARTIFACT=$(echo "$LAST_LOG" | jq -r '.artifact // "unknown"' 2>/dev/null || echo "unknown")
-  BASELINE=$(echo "$LAST_LOG" | jq -r '.baseline // 0' 2>/dev/null || echo "0")
-  FINAL=$(echo "$LAST_LOG" | jq -r '.final // 0' 2>/dev/null || echo "0")
-  ITERATIONS=$(echo "$LAST_LOG" | jq -r '.iterations // 0' 2>/dev/null || echo "0")
-  KEPT=$(echo "$LAST_LOG" | jq -r '.kept // 0' 2>/dev/null || echo "0")
-  DISCARDED=$(echo "$LAST_LOG" | jq -r '.discarded // 0' 2>/dev/null || echo "0")
-  IMPROVED=$(echo "$LAST_LOG" | jq -r '.improved // false' 2>/dev/null || echo "false")
+  # Parse JSON with python (jq may not be available on all platforms)
+  json_get() {
+    echo "$LAST_LOG" | $PY -c "import sys,json; d=json.load(sys.stdin); print(d.get('$1','$2'))" 2>/dev/null || echo "$2"
+  }
+  TARGET_METRIC=$(json_get target_metric unknown)
+  ARTIFACT=$(json_get artifact unknown)
+  BASELINE=$(json_get baseline 0)
+  FINAL=$(json_get final 0)
+  ITERATIONS=$(json_get iterations 0)
+  KEPT=$(json_get kept 0)
+  DISCARDED=$(json_get discarded 0)
+  IMPROVED=$(json_get improved false)
+  # Python prints booleans as True/False; normalize to lowercase
+  IMPROVED=$(echo "$IMPROVED" | tr '[:upper:]' '[:lower:]')
 else
   log "No research log found. Skipping."
   exit 0
@@ -89,13 +102,13 @@ if [ "$IMPROVED" != "true" ]; then
 fi
 
 # Minimum delta threshold (skip marginal improvements)
-DELTA=$(python3 -c "
+DELTA=$($PY -c "
 b, f = float('$BASELINE'), float('$FINAL')
 print(f'{f - b:.4f}' if b > 0 else '0')
 " 2>/dev/null || echo "0")
 
 MIN_DELTA="0.10"
-BELOW_THRESHOLD=$(python3 -c "print('yes' if float('$DELTA') < float('$MIN_DELTA') else 'no')" 2>/dev/null || echo "no")
+BELOW_THRESHOLD=$($PY -c "print('yes' if float('$DELTA') < float('$MIN_DELTA') else 'no')" 2>/dev/null || echo "no")
 if [ "$BELOW_THRESHOLD" = "yes" ]; then
   log "Improvement delta ($DELTA) below threshold ($MIN_DELTA). Skipping."
   exit 0
@@ -103,7 +116,7 @@ fi
 
 # ─── Ensure upstream remote ─────────────────────────────
 
-UPSTREAM_URL="https://github.com/${UPSTREAM_REPO}.git"
+UPSTREAM_URL="${UPSTREAM_GIT_URL:-https://github.com/${UPSTREAM_REPO}.git}"
 EXISTING_URL=$(git remote get-url upstream 2>/dev/null || echo "")
 if [ -z "$EXISTING_URL" ]; then
   git remote add upstream "$UPSTREAM_URL"
@@ -198,7 +211,7 @@ fi
 
 log "Branch pushed. Creating cross-fork PR..."
 
-DELTA_PCT=$(python3 -c "
+DELTA_PCT=$($PY -c "
 b = float('$BASELINE')
 print(f'{((float(\"$FINAL\") - b) / b) * 100:.0f}' if b > 0 else '0')
 " 2>/dev/null || echo "?")

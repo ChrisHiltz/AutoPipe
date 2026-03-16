@@ -60,6 +60,24 @@ jobs:
           ./scripts/read-build-plan.sh status "$TASK_ID" done
           echo "Marked ${TASK_ID} as done in .pipeline-status.json"
 
+      - name: Update codebase map
+        if: steps.extract.outputs.found == 'true'
+        run: |
+          chmod +x scripts/generate-codebase-map.sh
+          ./scripts/generate-codebase-map.sh
+          if git diff --quiet docs/05-design/CODEBASE-MAP.md 2>/dev/null; then
+            echo "Codebase map unchanged."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add docs/05-design/CODEBASE-MAP.md
+            git commit -m "chore: update codebase map after ${TASK_ID} merge"
+            git push
+            echo "Codebase map updated."
+          fi
+        env:
+          TASK_ID: ${{ steps.extract.outputs.task_id }}
+
       - name: Trigger next task pickup
         if: steps.extract.outputs.found == 'true'
         env:
@@ -122,6 +140,22 @@ jobs:
             echo "has_code=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update codebase map
+        if: steps.check.outputs.has_code == 'true'
+        run: |
+          chmod +x scripts/generate-codebase-map.sh
+          ./scripts/generate-codebase-map.sh
+          if git diff --quiet docs/05-design/CODEBASE-MAP.md 2>/dev/null; then
+            echo "Codebase map unchanged."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add docs/05-design/CODEBASE-MAP.md
+            git commit -m "chore: update codebase map after code merge"
+            git push
+            echo "Codebase map updated."
           fi
 
       - name: Update project board to Complete

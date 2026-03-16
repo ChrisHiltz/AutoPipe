@@ -45,6 +45,14 @@ The number `{n}` in artifact filenames MUST match the signal number throughout t
 
 ### Stage 2: Architecture (ADR)
 - **Also read:** `docs/00-foundation/CONSTRAINTS.md` — compliance, performance, security requirements
+- **Also read:** `docs/05-design/CODEBASE-MAP.md` — current codebase structure
+- **Also explore (if src/ has source files):**
+  1. Read CODEBASE-MAP.md for the high-level structure
+  2. Identify modules relevant to this feature by name/path
+  3. For each relevant module, read its entry point or index file
+  4. Note public interfaces (exports, function signatures, route definitions)
+  5. Record findings in the ADR's "Existing Codebase" section
+  6. If src/ contains only .gitkeep files, write "Greenfield" in that section
 - **Input:** An approved PRB in `docs/02-discovery/`
 - **Output:** `docs/03-architecture/ADR-{n}.md` using `.templates/adr_template.md`
 - **Must contain:** Link to the PRB it solves
@@ -54,6 +62,9 @@ The number `{n}` in artifact filenames MUST match the signal number throughout t
 
 ### Stage 3: Specification (PRD)
 - **Also read:** `docs/00-foundation/BRAND.md` — design principles and UX guidelines for user-facing features
+- **Also read:** `docs/05-design/CODEBASE-MAP.md` — current codebase structure
+- **Cross-verify:** Before writing the PRD, independently check the ADR's "Existing Codebase" section against the actual codebase. Note discrepancies in PRD Section 6.
+- **File paths:** Use CODEBASE-MAP.md and direct exploration to accurately populate the "Files to Create/Modify" section with real paths.
 - **Input:** An approved ADR in `docs/03-architecture/`
 - **Output:** `docs/04-specs/PRD-{n}.md` using `.templates/prd_template.md`
 - **Must contain:** Link to the ADR it implements
@@ -68,6 +79,7 @@ The number `{n}` in artifact filenames MUST match the signal number throughout t
 - **Must satisfy:** Every acceptance criterion in the PRD
 - **Must pass:** All existing tests + new tests for this feature
 - **Must include:** A `# Implements: PRD-{n}` comment in each new source file
+- **If you discover the ADR's codebase analysis is wrong:** Include `<!-- errata: ADR-{n} -- {description of what's wrong} -->` in your PR body. This surfaces during code review without adding a new gate.
 
 ### What "Approved" Means
 
@@ -96,6 +108,12 @@ When `pipeline.yaml` mode is `execution`, you skip the discovery/architecture/sp
 8. Branch naming `task/{TASK_ID}` is conventional but not required — use whatever your agent runtime provides
 
 **Post-merge automation:** When your PR merges with the `pipeline:task` label, `task-complete.yml` automatically marks the task as `done` in `.pipeline-status.json` and triggers the orchestrator to pick up the next available task. You do NOT need to manually update the status file.
+
+### Pipeline Management Skills
+
+- `/pipeline` — Check status, dispatch work, validate build plans, or initialize new build plans. Works in both steady-state and execution modes.
+- `/build-plan-generator` — Generate a build plan from a product blueprint. After generation, offers to submit to `/buildplan-review` for certification.
+- `/buildplan-review` — Certify a build plan to 95+ autonomous execution readiness. Runs 5 parallel review agents, scores 15 categories, and autonomously fixes issues through up to 3 iteration passes. Can also be invoked manually on any existing build plan.
 
 ## Cross-Linking Format
 

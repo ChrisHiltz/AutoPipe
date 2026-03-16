@@ -199,7 +199,7 @@ if [ -n "$docs_to_check" ]; then
     if echo "$doc" | grep -q "00-foundation/"; then
       continue
     fi
-    if grep -qE '\[Short Title\]|\[Issue-Number\]|\[YYYY-MM-DD\]|\[Link to' "$doc"; then
+    if grep -qE '\[Short Title\]|\[Issue-Number\]|\[YYYY-MM-DD\]|\[Link to|\[path\]|\[existing-path\]' "$doc"; then
       log_error "$doc → contains unfilled template placeholders"
       placeholder_count=$((placeholder_count + 1))
     fi
@@ -265,6 +265,65 @@ if [ -n "${GITHUB_BASE_REF:-}" ]; then
   fi
 else
   log_warn "Not running in CI — skipping single-stage check"
+fi
+echo ""
+
+# ──────────────────────────────────────────────
+# Rule 7: Codebase awareness checks
+# ADRs must explore the codebase when source files exist
+# ──────────────────────────────────────────────
+echo "--- Rule 7: Codebase awareness ---"
+
+# Check if src/ has real source files (not just .gitkeep)
+has_source_files=false
+if find "${SRC_DIR}/" -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.go" -o -name "*.rs" -o -name "*.java" \) 2>/dev/null | head -1 | grep -q .; then
+  has_source_files=true
+fi
+
+codebase_checks=0
+if [ "$adr_count" -gt 0 ] && compgen -G "${DOCS_DIR}/03-architecture/"*.md > /dev/null 2>&1; then
+  for adr in "${DOCS_DIR}/03-architecture/"*.md; do
+    # Check 1: Greenfield escape hatch — warn if src/ has files but ADR says Greenfield
+    if [ "$has_source_files" = true ]; then
+      if grep -q "Greenfield" "$adr" 2>/dev/null; then
+        log_warn "$adr says 'Greenfield' but src/ contains source files — verify codebase was explored"
+      fi
+    fi
+
+    # Check 2: Verify paths listed in "Modules examined" actually exist
+    if grep -q "Modules examined" "$adr" 2>/dev/null; then
+      modules_section=$(sed -n '/Modules examined/,/^\*\*\|^##/p' "$adr" 2>/dev/null | grep '^\- `' | sed 's/^- `//;s/`.*//' || true)
+      if [ -n "$modules_section" ]; then
+        while IFS= read -r module_path; do
+          [ -z "$module_path" ] && continue
+          if [ ! -e "$module_path" ]; then
+            log_error "$adr → references module '$module_path' but it does not exist (hallucinated path)"
+            codebase_checks=$((codebase_checks + 1))
+          fi
+        done <<< "$modules_section"
+      fi
+    fi
+  done
+fi
+
+# Check 3: PRD MODIFY targets must exist
+if [ "$prd_count" -gt 0 ] && compgen -G "${DOCS_DIR}/04-specs/"*.md > /dev/null 2>&1; then
+  for prd in "${DOCS_DIR}/04-specs/"*.md; do
+    # Extract files listed under "Modify:" section
+    modify_section=$(sed -n '/^\*\*Modify:\*\*/,/^\*\*\|^##/p' "$prd" 2>/dev/null | grep '^\- `' | sed 's/^- `//;s/`.*//' || true)
+    if [ -n "$modify_section" ]; then
+      while IFS= read -r file_path; do
+        [ -z "$file_path" ] && continue
+        if [ ! -f "$file_path" ]; then
+          log_warn "$prd → lists '$file_path' under Modify but file does not exist"
+        fi
+      done <<< "$modify_section"
+    fi
+  done
+fi
+
+if [ "$codebase_checks" -eq 0 ]; then
+  log_ok "Codebase awareness checks passed"
 fi
 echo ""
 

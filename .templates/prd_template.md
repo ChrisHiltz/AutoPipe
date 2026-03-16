@@ -27,6 +27,19 @@ e.g., "Requires SUPABASE_URL and SUPABASE_KEY in .env"]
 - E2E: `tests/e2e/[feature].spec.ts` (if applicable)
 
 ## 5. Files to Create/Modify
-[List the source files this spec will produce or change.]
-- `src/backend/[path]`
-- `src/frontend/[path]`
+
+**Codebase verification:** [Confirm you read CODEBASE-MAP.md and verified the ADR's Existing Codebase section. Note any discrepancies.]
+
+**Create:**
+- `src/backend/[path]` — [purpose]
+
+**Modify:**
+- `src/backend/[existing-path]` — [what changes and why]
+
+**Existing patterns to follow:**
+- [e.g., "Tests mirror src/ structure under tests/"]
+
+## 6. Codebase Discrepancies (if any)
+[If the ADR's "Existing Codebase" section contains errors you discovered during your own
+exploration, document them here. This flags issues for the human reviewer before code
+implementation begins. If no discrepancies found, write "None — ADR codebase analysis verified."]

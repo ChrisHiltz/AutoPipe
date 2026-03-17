@@ -328,6 +328,48 @@ fi
 echo ""
 
 # ──────────────────────────────────────────────
+# Rule 8: Local dev sections in pipeline documents
+# ADRs must have "Local Development Impact" section
+# PRDs must have "Local Development Requirements" section
+# ──────────────────────────────────────────────
+echo "--- Rule 8: Local development completeness ---"
+localdev_checks=0
+
+# Check ADRs for Local Development Impact section
+if [ "$adr_count" -gt 0 ] && compgen -G "${DOCS_DIR}/03-architecture/"*.md > /dev/null 2>&1; then
+  for adr in "${DOCS_DIR}/03-architecture/"*.md; do
+    if ! grep -q "Local Development Impact" "$adr" 2>/dev/null; then
+      log_error "$adr → missing 'Local Development Impact' section (ADR Section 5)"
+      log_info "  Every ADR must address how the architecture decision affects local development"
+      localdev_checks=$((localdev_checks + 1))
+    fi
+  done
+fi
+
+# Check PRDs for Local Development Requirements section
+if [ "$prd_count" -gt 0 ] && compgen -G "${DOCS_DIR}/04-specs/"*.md > /dev/null 2>&1; then
+  for prd in "${DOCS_DIR}/04-specs/"*.md; do
+    if ! grep -q "Local Development Requirements" "$prd" 2>/dev/null; then
+      log_error "$prd → missing 'Local Development Requirements' section (PRD Section 4)"
+      log_info "  Every PRD must include local development acceptance criteria"
+      localdev_checks=$((localdev_checks + 1))
+    fi
+  done
+fi
+
+# Check that .env.example exists if any code changes are present
+if [ -n "$changed_src_files" ]; then
+  if [ ! -f ".env.example" ]; then
+    log_warn "Source code changes present but no .env.example file found"
+  fi
+fi
+
+if [ "$localdev_checks" -eq 0 ]; then
+  log_ok "Local development sections present in all pipeline documents"
+fi
+echo ""
+
+# ──────────────────────────────────────────────
 # Summary
 # ──────────────────────────────────────────────
 echo "============================================"

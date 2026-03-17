@@ -36,6 +36,16 @@ cp -r project-template/.* /path/to/your-repo/  # hidden files (.claude, .github,
 
 - [ ] Edit `stack.yaml` — set your project name, frameworks, database, testing tools, and hosting
 
+### 2a. Configure Local Development
+
+- [ ] Edit `stack.yaml` section `local_dev`:
+  - `strategy` — how devs run locally (e.g., `docker-compose`, `native`, `devcontainer`)
+  - `bootstrap_command` — single command from clone to running (e.g., `make dev`)
+  - `prerequisites` — system deps (e.g., `Docker 24+`, `Node 20+`)
+  - `seed_data` — how test data loads (e.g., `make seed`, or `none`)
+  - `env_setup` — how env vars get configured (e.g., `cp .env.example .env`)
+- [ ] Customize `.env.example` with application-specific environment variables
+
 ### 2b. Fill In Project Foundation (Recommended)
 
 - [ ] Edit `docs/00-foundation/PROJECT.md` — vision, target users, success metrics, non-goals

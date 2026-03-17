@@ -20,13 +20,22 @@ e.g., "Requires SUPABASE_URL and SUPABASE_KEY in .env"]
 **Out of scope:**
 - [What this task explicitly does NOT build — prevents scope creep]
 
-## 4. Testing Requirements
+## 4. Local Development Requirements
+[Every feature must be runnable locally. Reference stack.yaml `local_dev` for the project's strategy.]
+
+- [ ] Bootstrap: `{bootstrap_command from stack.yaml}` starts all services needed for this feature
+- [ ] Environment: All new env vars documented in `.env.example` with non-secret defaults
+- [ ] Seed data: Dev seed data covers this feature's happy path
+- [ ] Isolation: Feature works without network access to production/staging services
+- [ ] Verification: Developer can manually verify this feature works locally before pushing
+
+## 5. Testing Requirements
 [Name the exact test files that must be created or updated.]
 - Backend: `tests/backend/test_[feature].py`
 - Frontend: `tests/frontend/[feature].test.ts`
 - E2E: `tests/e2e/[feature].spec.ts` (if applicable)
 
-## 5. Files to Create/Modify
+## 6. Files to Create/Modify
 
 **Codebase verification:** [Confirm you read CODEBASE-MAP.md and verified the ADR's Existing Codebase section. Note any discrepancies.]
 
@@ -39,7 +48,7 @@ e.g., "Requires SUPABASE_URL and SUPABASE_KEY in .env"]
 **Existing patterns to follow:**
 - [e.g., "Tests mirror src/ structure under tests/"]
 
-## 6. Codebase Discrepancies (if any)
+## 7. Codebase Discrepancies (if any)
 [If the ADR's "Existing Codebase" section contains errors you discovered during your own
 exploration, document them here. This flags issues for the human reviewer before code
 implementation begins. If no discrepancies found, write "None — ADR codebase analysis verified."]

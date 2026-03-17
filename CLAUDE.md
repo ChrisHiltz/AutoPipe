@@ -5,7 +5,7 @@ You are operating within the Build-Pipe document pipeline. Every action you take
 ## Mandatory Reading
 
 Before doing ANY work, read these files:
-1. `.agent-rules.md` — The seven rules you must obey. Violations fail CI.
+1. `.agent-rules.md` — The eight rules you must obey. Violations fail CI.
 2. `stack.yaml` — Technology constraints. Use only what's specified.
 3. `pipeline.yaml` — Current pipeline mode and configuration.
 4. `docs/00-foundation/PROJECT.md` — Project vision, target users, success metrics.
@@ -46,6 +46,7 @@ The number `{n}` in artifact filenames MUST match the signal number throughout t
 ### Stage 2: Architecture (ADR)
 - **Also read:** `docs/00-foundation/CONSTRAINTS.md` — compliance, performance, security requirements
 - **Also read:** `docs/05-design/CODEBASE-MAP.md` — current codebase structure
+- **Also read:** `stack.yaml` field `local_dev` — the project's local development strategy
 - **Also explore (if src/ has source files):**
   1. Read CODEBASE-MAP.md for the high-level structure
   2. Identify modules relevant to this feature by name/path
@@ -58,6 +59,7 @@ The number `{n}` in artifact filenames MUST match the signal number throughout t
 - **Must contain:** Link to the PRB it solves
 - **Must respect:** `stack.yaml` technology choices
 - **Must respect:** Constraints in `docs/00-foundation/CONSTRAINTS.md`
+- **Must address:** Local development impact — how this decision affects bootstrap, new services, env vars, and offline capability
 - **Then STOP.** Do not proceed to specification. Open a PR.
 
 ### Stage 3: Specification (PRD)
@@ -71,6 +73,7 @@ The number `{n}` in artifact filenames MUST match the signal number throughout t
 - **Must contain:** Boolean acceptance criteria (testable)
 - **Must contain:** Exact test file paths to create/update
 - **Must list:** All source files to create/modify in "Files to Create/Modify" section
+- **Must contain:** Local development acceptance criteria — bootstrap, env vars, seed data, isolation
 - **Then STOP.** Do not proceed to code. Open a PR.
 
 ### Stage 4: Code
@@ -79,6 +82,8 @@ The number `{n}` in artifact filenames MUST match the signal number throughout t
 - **Must satisfy:** Every acceptance criterion in the PRD
 - **Must pass:** All existing tests + new tests for this feature
 - **Must include:** A `# Implements: PRD-{n}` comment in each new source file
+- **Must verify:** The bootstrap command from `stack.yaml` `local_dev.bootstrap_command` still works after changes
+- **Must update:** `.env.example` with any new environment variables
 - **If you discover the ADR's codebase analysis is wrong:** Include `<!-- errata: ADR-{n} -- {description of what's wrong} -->` in your PR body. This surfaces during code review without adding a new gate.
 
 ### What "Approved" Means
@@ -168,3 +173,4 @@ Apply these labels when opening PRs — they identify PR types for reviewers and
 - Never create a PR without the required labels (see PR Labels above)
 - Never proceed to the next stage if the input document's PR hasn't been merged
 - Never use a different number than the signal number in the artifact chain
+- Never introduce a service or environment variable without updating local dev sections (ADR, `.env.example`, `stack.yaml` prerequisites)

@@ -39,6 +39,15 @@ Architecture documents (ADRs) reference this file for compliance, performance, a
 - [Example: "No third-party analytics scripts without explicit user consent"]
 - [Or: "Standard web security practices — OWASP top 10 awareness"]
 
+## Local Development Requirements
+
+[Constraints on the local dev experience. Agents must ensure features satisfy these.]
+
+- [Example: "All features must work offline — no hard dependencies on cloud services during dev"]
+- [Example: "Bootstrap from clone to running in under 5 minutes"]
+- [Example: "No paid service accounts required for local development"]
+- [Or: "No specific local dev constraints beyond stack.yaml local_dev configuration"]
+
 ## Known Tech Debt
 
 [Existing issues that affect new work. Update as debt is created or resolved.]

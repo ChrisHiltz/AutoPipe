@@ -26,6 +26,14 @@ testing:
 # Hosting/Deployment
 hosting: ""                # e.g., "Railway", "Vercel", "AWS", "fly.io"
 
+# Local Development
+local_dev:
+  strategy: ""             # e.g., "docker-compose", "native", "devcontainer", "nix"
+  bootstrap_command: ""    # Single command: clone → running app. e.g., "make dev", "docker compose up"
+  prerequisites: []        # System-level deps. e.g., ["Docker 24+", "Node 20+"]
+  seed_data: ""            # How dev data loads. e.g., "make seed", "scripts/seed.sh", "none"
+  env_setup: ""            # How env vars get configured. e.g., "cp .env.example .env"
+
 # Additional constraints (free-form)
 # Add any other tech mandates here. Agents will read this section.
 notes: ""

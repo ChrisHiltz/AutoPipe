@@ -7,7 +7,7 @@ description: "Onboard a new Build-Pipe project. Run the interactive setup wizard
 
 You are running the interactive onboarding flow for Build-Pipe. Your job is to walk the user through configuring their project so the pipeline works end-to-end.
 
-The setup has 7 phases. Complete them in order. After each phase, confirm what was done before moving on.
+The setup has 8 phases. Complete them in order. After each phase, confirm what was done before moving on.
 
 ---
 
@@ -201,6 +201,32 @@ Fields to configure (in order):
 12. **Notes** — any additional constraints (or blank)
 
 Tip: Group related questions. Don't ask 12 separate questions — ask "Frontend stack?" (covers ui_framework + frontend_runtime), "Backend stack?" (covers backend + database + auth), "Testing?" (all three), etc.
+
+---
+
+## Phase 3a: Local Development Strategy
+
+Walk the user through the `local_dev` section of `stack.yaml`. This determines how every feature will be developed and tested locally.
+
+Ask the user:
+
+1. **Strategy** — "How will developers run the project locally?"
+   - `docker-compose` — All services defined in a compose file
+   - `native` — Install everything directly on the host machine
+   - `devcontainer` — VS Code Dev Container or GitHub Codespaces
+   - `nix` — Nix flakes for reproducible environments
+   - Other (let them type)
+
+2. **Bootstrap command** — "What single command should take a developer from `git clone` to a running app? (e.g., `make dev`, `docker compose up`, `./scripts/bootstrap.sh`)"
+   If they don't know yet, suggest: `make dev` as a convention they can wire up later.
+
+3. **Prerequisites** — "What system-level tools does a developer need installed? (e.g., Docker, Node 20+, Python 3.11+)"
+
+4. **Seed data** — "How will development/test data be loaded? (e.g., `make seed`, `scripts/seed.sh`, or none for now)"
+
+5. **Env setup** — "How will environment variables be configured? (default: `cp .env.example .env`)"
+
+Apply responses to `stack.yaml` under the `local_dev` section.
 
 ---
 

@@ -73,55 +73,45 @@ If `ao` is not found, ask the user ONE question:
 
 **If no:** Note ao is optional and continue to Phase 2.
 
-**If yes:** Run the full installation autonomously. The user should not need to do anything else.
-
-#### Step 1: Check ao prerequisites
+**If yes:** The project includes a standalone setup script that handles everything automatically:
 
 ```bash
-# Check Node.js 20+
-node --version 2>&1 | grep -E '^v(2[0-9]|[3-9][0-9])' || echo "NEED_NODE"
-
-# Check pnpm
-command -v pnpm 2>&1 || echo "NEED_PNPM"
-
-# Check tmux (Linux/macOS only — skip on Windows)
-command -v tmux 2>&1 || echo "NEED_TMUX"
+./scripts/setup-ao.sh
 ```
 
-Install any missing prerequisites automatically:
+This script:
+- Detects the platform (Git Bash, WSL, Linux, macOS)
+- On Windows/Git Bash, automatically relays into WSL (ao requires tmux which needs Linux)
+- Installs all missing dependencies: tmux, Node.js 20+ (via nvm), pnpm, gh CLI, Claude Code CLI, jq
+- Clones and builds ao from `ComposioHQ/agent-orchestrator`
+- Verifies the installation with `ao doctor`
+- Is idempotent — safe to run multiple times
 
-- **Node.js missing/old:** Tell the user "Node.js 20+ is required for ao" and offer to install via `nvm install 20` (if nvm exists) or direct them to https://nodejs.org. If you cannot install it, skip ao and continue — note it can be installed later.
-- **pnpm missing:** Run `npm install -g pnpm`
-- **tmux missing (Linux/macOS):** Run `sudo apt-get install -y tmux` (Debian/Ubuntu) or `brew install tmux` (macOS). On Windows with WSL, note tmux runs inside WSL.
+#### Platform-specific behavior:
 
-#### Step 2: Clone and build ao
+- **Windows (Git Bash):** The script detects MINGW/MSYS and re-launches itself inside WSL. ao and tmux run inside WSL, accessing the repo at `/mnt/c/...`. The `agent-orchestrator.yaml` path must use WSL format (`/mnt/c/Users/...` not `/c/Users/...`).
+- **Linux/macOS:** The script runs natively. tmux is installed via apt-get or brew.
+- **WSL:** Same as Linux — the script runs directly.
+
+#### Manual install (if the script fails):
 
 ```bash
-# Clone into a predictable location
+# Inside WSL or Linux/macOS:
+sudo apt-get install -y tmux jq       # system packages
+npm install -g pnpm                     # pnpm
+npm install -g @anthropic-ai/claude-code # Claude Code CLI
+
+# Clone and build ao
 AO_DIR="$HOME/.agent-orchestrator"
-if [ -d "$AO_DIR" ]; then
-  echo "ao directory already exists at $AO_DIR — updating..."
-  cd "$AO_DIR" && git pull
-else
-  gh repo clone ComposioHQ/agent-orchestrator "$AO_DIR"
-fi
+gh repo clone ComposioHQ/agent-orchestrator "$AO_DIR"
+cd "$AO_DIR" && pnpm install && pnpm build && npm link -g packages/cli
 
-# Install and build
-cd "$AO_DIR" && pnpm install && pnpm build
-
-# Link CLI globally
-npm link -g packages/cli
+# Verify
+ao --version
+ao doctor
 ```
 
-#### Step 3: Verify installation
-
-```bash
-ao --version 2>&1
-```
-
-If `ao --version` succeeds, report: "ao installed successfully." and continue.
-
-If the build fails, don't block setup. Report the error and tell the user: "ao installation failed — you can retry later by running `cd ~/.agent-orchestrator && pnpm install && pnpm build && npm link -g packages/cli`. The pipeline works without ao." Then continue to Phase 2.
+If the build fails, don't block setup. Report the error and tell the user: "ao installation failed — you can retry later by running `./scripts/setup-ao.sh`. The pipeline works without ao." Then continue to Phase 2.
 
 ---
 

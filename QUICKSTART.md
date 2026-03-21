@@ -82,10 +82,11 @@ These give agents context about your project. At minimum, fill in PROJECT.md —
 
 ### 5. Set Up Agent Orchestrator
 
-- [ ] Install ao: `git clone https://github.com/ComposioHQ/agent-orchestrator.git && cd agent-orchestrator && bash scripts/setup.sh`
-- [ ] Edit `agent-orchestrator.yaml` — set your project name, repo, and local path
-- [ ] Start ao: `ao start`
-- [ ] Start auto-dispatch: `./scripts/poll-and-spawn.sh my-project &`
+- [ ] Install and configure ao: `./scripts/setup-ao.sh` (detects platform, installs all dependencies)
+- [ ] Edit `agent-orchestrator.yaml` — verify your project name, repo, and local path
+- [ ] Start ao + auto-dispatch: `./scripts/ao-start.sh`
+
+> **Windows users:** ao requires tmux, which runs inside WSL. The `setup-ao.sh` script automatically detects Git Bash and relays setup into WSL. After setup, `ao-start.sh` does the same for launching. All ao operations run transparently inside WSL while your code stays on the Windows filesystem.
 
 ### 6. Set Up CODEOWNERS
 
@@ -116,9 +117,12 @@ chmod +x scripts/collect-metrics.sh
 chmod +x scripts/nightly-cycle.sh
 chmod +x scripts/setup-project-board.sh
 chmod +x scripts/update-project-board.sh
+chmod +x scripts/setup-ao.sh
+chmod +x scripts/verify-ao.sh
+chmod +x scripts/ao-start.sh
 ```
 
-- [ ] All nine scripts are executable
+- [ ] All twelve scripts are executable
 
 ### 10. Push and Verify
 
@@ -155,17 +159,109 @@ Everything else is autonomous.
 
 ---
 
-## Optional: GitHub Project Board
+## REQUIRED: GitHub Project Board & Views
 
-A visual Kanban board that auto-updates as signals flow through the pipeline.
+The project board is your team's **operational command center**. Without it, you have no visibility into what agents are doing, what needs your approval, or what's stuck in rework. Every signal, proposal, and code PR flows through this board.
 
-### 11. Set Up Project Board (Optional)
+### 11. Set Up Project Board
 
-- [ ] Run: `./scripts/setup-project-board.sh "My Project"`
-- [ ] Create a PAT at https://github.com/settings/tokens?type=beta with Projects (read/write) + Contents (read/write)
-- [ ] Store it: `gh secret set PROJECT_TOKEN` (paste token when prompted)
+- [ ] Run: `./scripts/setup-project-board.sh "My Project"` (creates board with Pipeline Stage field)
+- [ ] Add custom fields (run each command):
 
-Without the PAT, the board works for manual tracking — workflows skip board updates gracefully.
+```bash
+# These fields are REQUIRED for the approval queue to work
+gh project field-create PROJECT_NUM --owner YOUR_ORG --name "Review Status" --data-type "SINGLE_SELECT" --single-select-options "Queued,Needs Review,Approved,Changes Requested"
+gh project field-create PROJECT_NUM --owner YOUR_ORG --name "Priority" --data-type "SINGLE_SELECT" --single-select-options "P0 Critical,P1 High,P2 Medium,P3 Low"
+gh project field-create PROJECT_NUM --owner YOUR_ORG --name "Signal Type" --data-type "SINGLE_SELECT" --single-select-options "Bug,Feature,Feedback,Analytics"
+```
+
+Replace `PROJECT_NUM` with your project number (stored in `.github/project-number`) and `YOUR_ORG` with your GitHub org or username.
+
+- [ ] Create `.github/project-owner` containing your org name (e.g., `echo "my-org" > .github/project-owner`)
+
+### 11a. Set Up Project Board Views (MANDATORY)
+
+Open your project board URL and create these 3 views. **Do not skip this** — without the Approval Queue, your team cannot efficiently process pipeline work.
+
+#### View 1: Approval Queue (your team's daily driver)
+
+This is where your team spends 90% of their time. It shows exactly what needs a human decision RIGHT NOW.
+
+1. Click **"+ New view"** at the top of the project board
+2. Select **"Table"** layout
+3. Name it **"Approval Queue"**
+4. Click the **filter icon** (funnel) in the toolbar
+5. Add filter: **Review Status** → **is** → **Needs Review**
+6. Click **"Group by"** → select **Pipeline Stage** (groups items by Discovery, Architecture, Specification, Code)
+7. Click **"Sort"** → select **Priority** → **Ascending** (P0 Critical appears first)
+8. Add visible columns by clicking **"+"** on the header row:
+   - Title
+   - Pipeline Stage
+   - Priority
+   - Assignees
+   - Linked pull requests (click the PR link to go directly to the review)
+9. Remove any columns you don't need (right-click column header → Hide)
+
+**How to use it:** Open this view daily. Each row is a PR waiting for your review. Click the linked PR, review it, approve or request changes. The board updates automatically.
+
+#### View 2: Pipeline Overview (at-a-glance health check)
+
+Shows everything in flight across all stages. Use this to spot bottlenecks.
+
+1. Click **"+ New view"**
+2. Select **"Board"** layout
+3. Name it **"Pipeline Overview"**
+4. Set **"Column field"** to **Pipeline Stage**
+5. No filter — shows all items
+6. Cards should show: Title, Priority, Review Status
+
+**How to use it:** Glance at this weekly or when something feels stuck. If one column has too many items, that's your bottleneck.
+
+#### View 3: Rework Needed (items agents need to fix)
+
+Shows items where you requested changes. Agents pick these up automatically via `ao`, but this view lets you track rework progress.
+
+1. Click **"+ New view"**
+2. Select **"Table"** layout
+3. Name it **"Rework"**
+4. Click the **filter icon**
+5. Add filter: **Review Status** → **is** → **Changes Requested**
+6. Click **"Sort"** → select **Priority** → **Ascending**
+7. Add visible columns: Title, Pipeline Stage, Priority, Assignees, Linked pull requests
+
+**How to use it:** Check this when you want to see if agents have addressed your feedback. Once an agent re-submits, the item moves back to the Approval Queue automatically.
+
+### 11b. Set Up Board Automation Token
+
+For the board to auto-update as agents work, you need a Personal Access Token stored as a repo secret.
+
+- [ ] Go to https://github.com/settings/tokens?type=beta
+- [ ] Click **"Generate new token"**
+- [ ] Name it **"Build-Pipe Project Board"**
+- [ ] Under **"Repository access"**, select your repo
+- [ ] Under **"Permissions"**, enable: **Projects (read/write)** and **Contents (read/write)**
+- [ ] Generate and copy the token
+- [ ] Store it: `gh secret set PROJECT_TOKEN` (paste when prompted)
+
+Without the PAT, workflows skip board updates gracefully — the pipeline still works, but the board won't reflect real-time status.
+
+### Board Field Reference
+
+| Field | Values | Updated By |
+|-------|--------|-----------|
+| **Pipeline Stage** | Signal Received, Discovery, Synthesis, Architecture, Specification, Dispatched, Code, Complete | `pipeline-orchestrate.yml`, `signal-ingestion.yml`, `task-complete.yml` |
+| **Review Status** | Queued (agent working), Needs Review (PR open for human), Approved, Changes Requested | `pipeline-orchestrate.yml`, `pr-review-tracking.yml` |
+| **Priority** | P0 Critical, P1 High, P2 Medium, P3 Low | Set manually or by signal classification |
+| **Signal Type** | Bug, Feature, Feedback, Analytics | `signal-ingestion.yml` (from issue label) |
+
+### Review Status Lifecycle
+
+```
+Agent dispatched → Queued
+Agent opens PR   → Needs Review  ← YOU SEE THIS IN THE APPROVAL QUEUE
+You approve      → Approved      → auto-merges or you merge → next stage triggered
+You deny         → Changes Requested → agent reworks → Needs Review (back in queue)
+```
 
 ---
 

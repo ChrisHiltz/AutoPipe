@@ -286,10 +286,12 @@ if [ -f "$CONFIG_FILE" ]; then
   if echo "$CURRENT_PATH" | grep -q '^/mnt/'; then
     pass "Path uses WSL format: ${CURRENT_PATH}"
   elif echo "$CURRENT_PATH" | grep -q '^/[a-zA-Z]/'; then
-    warn "Path uses Git Bash format — should be /mnt/c/... for WSL"
-    log "  Current: ${CURRENT_PATH}"
     WSL_PATH=$(echo "$CURRENT_PATH" | sed 's|^/\([a-zA-Z]\)/|/mnt/\L\1/|')
-    log "  Suggested: ${WSL_PATH}"
+    log "Path uses Git Bash format — converting to WSL format..."
+    log "  Before: ${CURRENT_PATH}"
+    log "  After:  ${WSL_PATH}"
+    sed -i "s|path: .*|path: \"${WSL_PATH}\"|" "$CONFIG_FILE"
+    pass "Path auto-fixed to WSL format: ${WSL_PATH}"
   else
     pass "Path: ${CURRENT_PATH}"
   fi
